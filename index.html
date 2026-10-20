@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#0d0d1a">
+<title>QuizMaster Pro – Abacus Academy</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&family=Noto+Sans+Malayalam:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="app.js" defer></script>
+</head>
+<body>
+
+<!-- ═════════ SPLASH ═════════ -->
+<div class="splash-screen" id="splash">
+  <div class="splash-content">
+    <div class="splash-logo">
+      <div class="logo-icon"><svg viewBox="0 0 72 72" fill="none"><rect width="72" height="72" rx="18" fill="url(#lg1)"/><path d="M22 37l9 9 19-20" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="lg1" x1="0" y1="0" x2="72" y2="72"><stop stop-color="#667eea"/><stop offset="1" stop-color="#764ba2"/></linearGradient></defs></svg></div>
+      <div class="splash-title">QuizMaster <span>Pro</span></div>
+    </div>
+    <p class="splash-subtitle">Abacus Academy</p>
+    <div class="splash-loader"><div class="loader-bar"></div></div>
+  </div>
+</div>
+
+<div id="toast-container"></div>
+
+<!-- ═════════ SETUP (shown only when Supabase keys are missing) ═════════ -->
+<div class="page" id="page-setup">
+  <div class="login-bg"><div class="bg-orb orb1"></div><div class="bg-orb orb2"></div></div>
+  <div class="login-container wide">
+    <div class="login-header"><div class="brand-name">Setup <span>needed</span></div>
+      <p class="brand-tagline">Supabase connection ഇതുവരെ ചേർത്തിട്ടില്ല</p></div>
+    <ol class="setup-steps">
+      <li>Supabase-ൽ <b>SQL Editor</b> തുറന്ന് <code>supabase_setup.sql</code> മുഴുവനായി paste ചെയ്ത് <b>Run</b> അമർത്തുക.</li>
+      <li><b>Authentication → Sign In / Providers → Email</b>: "Confirm email" <b>OFF</b> ആക്കുക.</li>
+      <li><b>Project Settings → API</b>-ൽ നിന്ന് Project URL-ഉം anon public key-ഉം copy ചെയ്യുക.</li>
+      <li><code>app.js</code>-ന്റെ മുകളിലുള്ള <code>CONFIG</code>-ൽ അവ paste ചെയ്ത് save ചെയ്യുക. പേജ് reload ചെയ്യുക.</li>
+    </ol>
+    <p class="login-hint" id="setup-extra"></p>
+  </div>
+</div>
+
+<!-- ═════════ LOGIN / SIGN UP ═════════ -->
+<div class="page" id="page-login">
+  <div class="login-bg"><div class="bg-orb orb1"></div><div class="bg-orb orb2"></div><div class="bg-orb orb3"></div></div>
+  <div class="login-container">
+    <div class="login-header">
+      <div class="brand-logo"><svg width="56" height="56" viewBox="0 0 72 72" fill="none"><rect width="72" height="72" rx="18" fill="url(#lg2)"/><path d="M22 37l9 9 19-20" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="lg2" x1="0" y1="0" x2="72" y2="72"><stop stop-color="#667eea"/><stop offset="1" stop-color="#764ba2"/></linearGradient></defs></svg></div>
+      <div class="brand-name">QuizMaster <span>Pro</span></div>
+      <p class="brand-tagline">Abacus Academy · Online Quiz</p>
+    </div>
+
+    <div class="login-tabs">
+      <button class="tab-btn active" data-tab="signin" onclick="switchLoginTab('signin')"><i data-icon="key"></i> Sign In</button>
+      <button class="tab-btn" data-tab="signup" onclick="switchLoginTab('signup')"><i data-icon="user-plus"></i> Sign Up</button>
+    </div>
+
+    <div class="login-form active" id="form-signin">
+      <div class="form-group"><label>Admission No / Username</label>
+        <div class="input-wrapper"><i data-icon="user"></i><input id="si-adm" autocomplete="username" placeholder="e.g. A1024" autocapitalize="characters"></div></div>
+      <div class="form-group"><label>Password</label>
+        <div class="input-wrapper"><i data-icon="lock"></i><input id="si-pass" type="password" autocomplete="current-password" placeholder="Your password">
+          <button type="button" class="toggle-password" onclick="togglePassword('si-pass', this)"><i data-icon="eye"></i></button></div></div>
+      <button class="btn-login" id="btn-signin" onclick="signIn()"><i data-icon="send"></i> Sign In</button>
+      <p class="login-hint">പുതിയ കുട്ടിയാണോ? മുകളിൽ <b>Sign Up</b> അമർത്തി account ഉണ്ടാക്കുക.<br>Password മറന്നാൽ ടീച്ചറോട് പറയുക.</p>
+    </div>
+
+    <div class="login-form" id="form-signup">
+      <div class="form-group"><label>Admission No</label>
+        <div class="input-wrapper"><i data-icon="book"></i><input id="su-adm" placeholder="e.g. 3001" autocapitalize="characters" oninput="onSignupAdmInput()"></div></div>
+      <div class="adm-check" id="su-adm-check"></div>
+      <div id="su-details">
+        <div class="form-group"><label>Full name</label>
+          <div class="input-wrapper"><i data-icon="user"></i><input id="su-name" autocomplete="name" placeholder="Student's full name"></div></div>
+        <div class="form-row">
+          <div class="form-group"><label>Centre</label><div class="input-wrapper"><i data-icon="home"></i><select id="su-centre"></select></div></div>
+          <div class="form-group"><label>Class</label><div class="input-wrapper"><i data-icon="users"></i><select id="su-class"></select></div></div>
+        </div>
+        <div class="form-group"><label>Batch <span class="hint">(optional)</span></label>
+          <div class="input-wrapper"><i data-icon="calendar"></i><input id="su-batch" placeholder="e.g. HB / EM / Morning"></div></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Password</label><div class="input-wrapper"><i data-icon="lock"></i><input id="su-pass" type="password" autocomplete="new-password" placeholder="Min 6 characters"></div></div>
+        <div class="form-group"><label>Confirm</label><div class="input-wrapper"><i data-icon="lock"></i><input id="su-pass2" type="password" autocomplete="new-password" placeholder="Same again"></div></div>
+      </div>
+      <button class="btn-login" id="btn-signup" onclick="signUp()"><i data-icon="user-plus"></i> Create Account</button>
+      <p class="login-hint">Abacus Academy-യുടെ student list-ൽ ഉള്ള Admission No ആണെങ്കിൽ ഉടനെ quiz എഴുതാം.<br>List-ൽ ഇല്ലെങ്കിൽ ടീച്ചർ approve ചെയ്യണം.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════ WAITING FOR APPROVAL ═════════ -->
+<div class="page" id="page-pending">
+  <div class="login-bg"><div class="bg-orb orb1"></div><div class="bg-orb orb2"></div></div>
+  <div class="login-container">
+    <div class="login-header">
+      <div class="pending-icon">⏳</div>
+      <div class="brand-name" id="pending-title">Approval pending</div>
+      <p class="brand-tagline"><b id="pending-name"></b> · <span id="pending-adm"></span></p>
+    </div>
+    <p class="pending-msg" id="pending-msg"></p>
+    <div class="pending-actions">
+      <button class="btn-login" onclick="recheckApproval()"><i data-icon="refresh"></i> Check again</button>
+      <button class="btn-secondary" onclick="logout()"><i data-icon="logout"></i> Logout</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════ ADMIN ═════════ -->
+<div class="page" id="page-admin">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-logo"><svg width="30" height="30" viewBox="0 0 72 72" fill="none"><rect width="72" height="72" rx="18" fill="#667eea"/><path d="M22 37l9 9 19-20" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg> QuizMaster</div>
+      <button class="sidebar-close" onclick="closeSidebar()"><i data-icon="x"></i></button>
+    </div>
+    <nav class="sidebar-nav">
+      <a class="nav-item active" data-section="overview" onclick="showAdminSection('overview')"><i data-icon="home"></i> Dashboard</a>
+      <a class="nav-item" data-section="students" onclick="showAdminSection('students')"><i data-icon="users"></i> Students <span class="nav-count" id="nav-pending-count" title="Waiting for approval">0</span></a>
+      <a class="nav-item" data-section="subjects" onclick="showAdminSection('subjects')"><i data-icon="book"></i> Subjects</a>
+      <a class="nav-item" data-section="questions" onclick="showAdminSection('questions')"><i data-icon="list"></i> Question Bank</a>
+      <a class="nav-item" data-section="quizzes" onclick="showAdminSection('quizzes')"><i data-icon="quiz"></i> Quizzes</a>
+      <a class="nav-item" data-section="results" onclick="showAdminSection('results')"><i data-icon="trophy"></i> Results</a>
+      <a class="nav-item" data-section="analytics" onclick="showAdminSection('analytics')"><i data-icon="chart"></i> Mark Analysis</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="admin-info"><div class="admin-avatar" id="admin-avatar">A</div>
+        <div><div class="admin-name" id="admin-name">Admin</div><div class="admin-role">Teacher · Admin</div></div></div>
+      <button class="btn-logout" onclick="logout()"><i data-icon="logout"></i> Logout</button>
+    </div>
+  </aside>
+
+  <main class="admin-main">
+    <header class="admin-header">
+      <button class="hamburger" onclick="toggleSidebar()"><i data-icon="menu"></i></button>
+      <h1 id="admin-section-title">Dashboard</h1>
+      <div class="notification-badge" id="active-quiz-badge" style="display:none"><i data-icon="zap"></i> <span id="active-quiz-count">0</span> live</div>
+      <button class="icon-btn" id="btn-admin-refresh" title="Refresh data" onclick="refreshAdmin()"><i data-icon="refresh"></i></button>
+    </header>
+
+    <!-- Overview -->
+    <section class="admin-section active" id="section-overview">
+      <div class="stats-grid" id="overview-stats"></div>
+      <div class="an-card"><div class="an-card-head"><h3>Live &amp; upcoming quizzes</h3>
+        <button class="btn-action" onclick="showAdminSection('questions');openBulkImportModal()"><i data-icon="upload"></i> Paste new quiz</button></div>
+        <div id="overview-upcoming"></div></div>
+      <div class="recent-activity"><h2>Recent submissions</h2><div id="overview-recent"></div></div>
+    </section>
+
+    <!-- Students -->
+    <section class="admin-section" id="section-students">
+      <div class="section-toolbar">
+        <h2>Students <span class="count-chip" id="students-count"></span></h2>
+        <div class="toolbar-filters">
+          <select class="filter-select" id="stu-filter-status" onchange="renderStudents()">
+            <option value="">All status</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option>
+          </select>
+          <select class="filter-select" id="stu-filter-class" onchange="renderStudents()"></select>
+          <select class="filter-select" id="stu-filter-centre" onchange="renderStudents()"></select>
+          <input class="filter-select" id="stu-search" placeholder="Search name / adm no" oninput="renderStudents()">
+          <button class="btn-action" id="btn-approve-all" onclick="approveAllPending()"><i data-icon="check"></i> <span>Approve all pending</span></button>
+        </div>
+      </div>
+      <div id="students-table"></div>
+    </section>
+
+    <!-- Subjects -->
+    <section class="admin-section" id="section-subjects">
+      <div class="section-toolbar"><h2>Subjects &amp; Chapters</h2>
+        <button class="btn-action" onclick="openAddSubject()"><i data-icon="plus"></i> Add Subject</button></div>
+      <div class="subjects-grid" id="subjects-grid"></div>
+    </section>
+
+    <!-- Questions -->
+    <section class="admin-section" id="section-questions">
+      <div class="section-toolbar">
+        <h2>Question Bank <span class="count-chip" id="questions-count"></span></h2>
+        <div class="toolbar-filters">
+          <select class="filter-select" id="q-filter-subject" onchange="onQuestionFilterSubject()"></select>
+          <select class="filter-select" id="q-filter-chapter" onchange="questionListLimit=100;renderQuestions()"></select>
+          <input class="filter-select" id="q-search" placeholder="Search questions" oninput="questionListLimit=100;renderQuestions()">
+          <button class="btn-secondary" onclick="openAddQuestion()"><i data-icon="plus"></i> Add one</button>
+          <button class="btn-action" onclick="openBulkImportModal()"><i data-icon="upload"></i> Bulk Import (paste)</button>
+        </div>
+      </div>
+      <div class="questions-list" id="questions-list"></div>
+    </section>
+
+    <!-- Quizzes -->
+    <section class="admin-section" id="section-quizzes">
+      <div class="section-toolbar"><h2>Quizzes</h2>
+        <div class="toolbar-filters">
+          <button class="btn-secondary" onclick="openCreateQuiz()"><i data-icon="plus"></i> From question bank</button>
+          <button class="btn-action" onclick="openBulkImportModal()"><i data-icon="upload"></i> Paste 20 questions → new quiz</button>
+        </div></div>
+      <div class="quizzes-grid" id="quizzes-grid"></div>
+    </section>
+
+    <!-- Results -->
+    <section class="admin-section" id="section-results">
+      <div class="section-toolbar">
+        <h2>Results <span class="count-chip" id="results-count"></span></h2>
+        <div class="toolbar-filters">
+          <select class="filter-select" id="res-filter-quiz" onchange="renderResults()"></select>
+          <select class="filter-select" id="res-filter-centre" onchange="renderResults()"></select>
+          <select class="filter-select" id="res-filter-class" onchange="renderResults()"></select>
+          <input class="filter-select" id="res-search" placeholder="Search student" oninput="renderResults()">
+          <button class="btn-action" onclick="exportResults()"><i data-icon="download"></i> Export CSV</button>
+        </div>
+      </div>
+      <div id="results-table"></div>
+    </section>
+
+    <!-- Analytics -->
+    <section class="admin-section" id="section-analytics">
+      <div class="section-toolbar no-print">
+        <div class="seg big">
+          <button class="an-tab active" data-tab="quiz" onclick="switchAnalyticsTab('quiz')"><i data-icon="chart"></i> Quiz analysis</button>
+          <button class="an-tab" data-tab="student" onclick="switchAnalyticsTab('student')"><i data-icon="user"></i> Student report</button>
+        </div>
+      </div>
+      <div id="an-quiz-view">
+        <div class="toolbar-filters no-print an-filters">
+          <select class="filter-select grow" id="an-quiz" onchange="renderQuizAnalytics()"></select>
+          <select class="filter-select" id="an-centre" onchange="renderQuizAnalytics()"></select>
+        </div>
+        <div id="an-quiz-body" class="print-area"></div>
+      </div>
+      <div id="an-student-view" style="display:none">
+        <div class="toolbar-filters no-print an-filters">
+          <select class="filter-select grow" id="an-student" onchange="renderStudentAnalytics()"></select>
+        </div>
+        <div id="an-student-body" class="print-area"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ═════════ STUDENT ═════════ -->
+<div class="page" id="page-student">
+  <header class="student-header">
+    <div class="student-brand"><svg width="28" height="28" viewBox="0 0 72 72" fill="none"><rect width="72" height="72" rx="18" fill="#667eea"/><path d="M22 37l9 9 19-20" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg> <span class="hide-sm">QuizMaster</span></div>
+    <div class="student-info-bar">
+      <div class="student-greeting"><span id="student-greeting-text">Welcome!</span><span class="student-badge" id="student-class-badge"></span></div>
+      <button class="icon-btn" id="btn-student-refresh" title="Refresh" onclick="refreshStudent()"><i data-icon="refresh"></i></button>
+      <button class="btn-logout-sm" onclick="logout()"><i data-icon="logout"></i> <span class="hide-sm">Logout</span></button>
+    </div>
+  </header>
+  <div class="student-body">
+    <div class="student-tabs">
+      <button class="stab active" data-tab="quizzes" onclick="switchStudentTab('quizzes')"><i data-icon="quiz"></i> Quizzes</button>
+      <button class="stab" data-tab="results" onclick="switchStudentTab('results')"><i data-icon="trophy"></i> My Results</button>
+    </div>
+    <section class="student-section active" id="stu-quizzes"><div class="student-quizzes-grid" id="student-quizzes-grid"></div></section>
+    <section class="student-section" id="stu-results"><div id="student-results-summary"></div><div id="student-results-list"></div></section>
+  </div>
+</div>
+
+<!-- ═════════ QUIZ TAKING ═════════ -->
+<div class="page" id="page-quiz">
+  <div class="quiz-container" id="quiz-container">
+    <div class="quiz-header-bar">
+      <div class="quiz-title-area"><h1 id="quiz-taking-title">Quiz</h1><p id="quiz-taking-subtitle"></p></div>
+      <div class="quiz-meta-bar">
+        <span class="quiz-progress-pill mode" id="quiz-mode-chip"></span>
+        <span class="quiz-progress-pill" id="quiz-practice-score" style="display:none"></span>
+        <span class="quiz-progress-pill"><span id="q-current">1</span>/<span id="q-total">1</span></span>
+        <div class="quiz-timer" id="quiz-timer"><i data-icon="clock"></i><span id="timer-display">00:00</span></div>
+      </div>
+    </div>
+    <div class="quiz-progress-bar-wrap"><div class="quiz-progress-bar" id="quiz-progress-bar"></div></div>
+    <div class="mobile-nav-strip" id="mobile-nav-strip"></div>
+    <div class="quiz-body">
+      <div class="question-panel">
+        <div class="question-number-badge" id="question-number-badge">Question 1</div>
+        <div class="question-text" id="question-text"></div>
+        <div class="options-grid" id="options-grid"></div>
+        <div class="answer-feedback" id="answer-feedback"></div>
+      </div>
+      <div class="quiz-navigator">
+        <h3>Questions</h3>
+        <div class="nav-grid" id="question-nav-grid"></div>
+        <div class="nav-legend">
+          <div class="legend-item"><span class="legend-dot current"></span> Current</div>
+          <div class="legend-item"><span class="legend-dot answered"></span> Answered</div>
+          <div class="legend-item"><span class="legend-dot wrong"></span> Wrong (practice)</div>
+          <div class="legend-item"><span class="legend-dot unanswered"></span> Not answered</div>
+        </div>
+      </div>
+    </div>
+    <div class="quiz-footer">
+      <button class="btn-nav" id="btn-prev" onclick="quizPrev()"><i data-icon="chev-left"></i> <span class="hide-sm">Previous</span></button>
+      <span class="btn-auto-save" id="btn-auto-save-status"><i data-icon="check"></i> Saved</span>
+      <button class="btn-nav next-btn" id="btn-next" onclick="quizNext()"><i data-icon="chev-right"></i> Next</button>
+      <button class="btn-submit" id="btn-submit" style="display:none" onclick="submitQuiz(false)"><i data-icon="send"></i> Submit</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═════════ RESULT ═════════ -->
+<div class="page" id="page-result">
+  <div class="result-container">
+    <div class="result-animation">
+      <div class="result-circle">
+        <svg class="result-svg" viewBox="0 0 120 120"><circle class="result-bg-circle" cx="60" cy="60" r="54" fill="none" stroke-width="10"/>
+          <circle class="result-progress-circle" id="result-progress-ring" cx="60" cy="60" r="54" fill="none" stroke-width="10"/></svg>
+        <div class="result-score-text"><span class="result-score-num" id="result-score-num">0</span><span class="result-score-out" id="result-score-out">/ 0</span></div>
+      </div>
+    </div>
+    <h2 class="result-title" id="result-title">Well done!</h2>
+    <p class="result-subtitle" id="result-subtitle"></p>
+    <div class="result-stats">
+      <div class="rstat" style="--c:var(--green)"><i data-icon="check"></i><span id="rs-correct">0</span><label>Correct</label></div>
+      <div class="rstat" style="--c:var(--red)"><i data-icon="x"></i><span id="rs-wrong">0</span><label>Wrong</label></div>
+      <div class="rstat" style="--c:var(--text-muted)"><i data-icon="help"></i><span id="rs-skipped">0</span><label>Skipped</label></div>
+      <div class="rstat" style="--c:var(--blue)"><i data-icon="clock"></i><span id="rs-time" class="small-num">0</span><label>Time</label></div>
+    </div>
+    <div class="result-actions">
+      <button class="btn-primary" id="btn-review-answers"><i data-icon="eye"></i> See correct answers</button>
+      <button class="btn-secondary" onclick="backToDashboard()"><i data-icon="home"></i> Back to quizzes</button>
+    </div>
+    <p class="review-later" id="review-later-note"></p>
+  </div>
+</div>
+
+<!-- ═════════ MODALS ═════════ -->
+
+<div class="modal-overlay" id="modal-add-subject">
+  <div class="modal">
+    <div class="modal-header"><h3>Add Subject</h3><button onclick="closeModal('modal-add-subject')"><i data-icon="x"></i></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Subject name</label><input id="subject-name" class="modal-input" placeholder="e.g. Chemistry / രസതന്ത്രം"></div>
+      <div class="form-group"><label>Code (optional)</label><input id="subject-code" class="modal-input" placeholder="e.g. CHEM10"></div>
+      <div class="form-group"><label>Colour</label>
+        <div class="color-picker-row">
+          <span class="color-swatch active" data-color="#667eea" style="background:#667eea" onclick="selectSubjectColor(this)"></span>
+          <span class="color-swatch" data-color="#43e97b" style="background:#43e97b" onclick="selectSubjectColor(this)"></span>
+          <span class="color-swatch" data-color="#f5576c" style="background:#f5576c" onclick="selectSubjectColor(this)"></span>
+          <span class="color-swatch" data-color="#4facfe" style="background:#4facfe" onclick="selectSubjectColor(this)"></span>
+          <span class="color-swatch" data-color="#fa8231" style="background:#fa8231" onclick="selectSubjectColor(this)"></span>
+          <span class="color-swatch" data-color="#f093fb" style="background:#f093fb" onclick="selectSubjectColor(this)"></span>
+          <span class="color-swatch" data-color="#a29bfe" style="background:#a29bfe" onclick="selectSubjectColor(this)"></span>
+        </div></div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeModal('modal-add-subject')">Cancel</button><button class="btn-primary" onclick="addSubject()">Add Subject</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-add-chapter">
+  <div class="modal">
+    <div class="modal-header"><h3>Add Chapter</h3><button onclick="closeModal('modal-add-chapter')"><i data-icon="x"></i></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="chapter-subject-id">
+      <div class="form-group"><label>Chapter name</label><input id="chapter-name" class="modal-input" placeholder="e.g. Unit 3 – Electrochemistry"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeModal('modal-add-chapter')">Cancel</button><button class="btn-primary" onclick="addChapter()">Add Chapter</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-add-question" data-sticky="1">
+  <div class="modal modal-lg">
+    <div class="modal-header"><h3 id="modal-question-title">Add Question</h3><button onclick="closeModal('modal-add-question')"><i data-icon="x"></i></button></div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group"><label>Subject</label><select id="q-subject" class="modal-input" onchange="populateChapterSelect('q-chapter', this.value, 'No chapter')"></select></div>
+        <div class="form-group"><label>Chapter</label><select id="q-chapter" class="modal-input"></select></div>
+      </div>
+      <div class="form-group"><label>Question</label><textarea id="q-text" class="modal-input" rows="3"></textarea></div>
+      <div class="options-editor"><label>Options (select the correct one)</label>
+        <div class="option-editor-row"><label class="opt-radio"><input type="radio" name="q-correct" value="A" checked> A</label><input id="q-opt-A" class="modal-input"></div>
+        <div class="option-editor-row"><label class="opt-radio"><input type="radio" name="q-correct" value="B"> B</label><input id="q-opt-B" class="modal-input"></div>
+        <div class="option-editor-row"><label class="opt-radio"><input type="radio" name="q-correct" value="C"> C</label><input id="q-opt-C" class="modal-input"></div>
+        <div class="option-editor-row"><label class="opt-radio"><input type="radio" name="q-correct" value="D"> D</label><input id="q-opt-D" class="modal-input"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label>Explanation (shown after answering)</label><input id="q-explanation" class="modal-input"></div>
+        <div class="form-group"><label>Marks</label><input id="q-marks" type="number" min="0.5" step="0.5" value="1" class="modal-input"></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeModal('modal-add-question')">Cancel</button><button class="btn-primary" onclick="saveQuestion()">Save</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-bulk-import" data-sticky="1">
+  <div class="modal modal-xl">
+    <div class="modal-header"><h3>Bulk Import – paste questions</h3><button onclick="closeModal('modal-bulk-import')"><i data-icon="x"></i></button></div>
+    <div class="modal-body">
+      <div class="form-row three">
+        <div class="form-group"><label>Subject <button type="button" class="btn-link" onclick="quickCreateSubject()">+ new</button></label>
+          <select id="bulk-subject" class="modal-input" onchange="loadChaptersForBulk()"></select></div>
+        <div class="form-group"><label>Chapter <button type="button" class="btn-link" onclick="quickCreateChapter()">+ new</button></label>
+          <select id="bulk-chapter" class="modal-input" onchange="suggestBulkTitle()"></select></div>
+        <div class="form-group"><label>Marks per question</label><input id="bulk-q-marks" type="number" min="0.5" step="0.5" value="1" class="modal-input" oninput="parseBulkQuestionsInput()"></div>
+      </div>
+
+      <div class="form-group">
+        <label class="label-row">Paste questions here <button type="button" class="btn-link" onclick="loadSamplePasteFormat()">See sample format</button></label>
+        <textarea id="bulk-questions-input" class="modal-input mono" rows="10" oninput="onBulkInputChanged()" placeholder="1. Question text?
+A) option
+B) option
+C) option
+D) option
+Ans: B
+വിശദീകരണം: (optional)
+
+2. Next question…
+
+✓ Excel / Google Sheets rows also work: Question | A | B | C | D | Answer | Explanation"></textarea>
+      </div>
+
+      <div class="anskey-toggle" onclick="toggleBulkAnswerKeyBox()">Answer key is separate? <span id="bulk-anskey-toggle-icon">▼ Show</span></div>
+      <div id="bulk-anskey-box" style="display:none">
+        <textarea id="bulk-answerkey-input" class="modal-input mono" rows="3" oninput="onBulkInputChanged()" placeholder="1-B, 2-A, 3-D …  or one per line:  1. B – explanation"></textarea>
+      </div>
+
+      <div class="label-row"><b>Preview</b> <span class="badge" id="bulk-preview-badge">0 Questions</span> <span id="bulk-import-status" class="small"></span></div>
+      <div id="bulk-preview-container" class="bulk-preview-list"></div>
+
+      <label class="toggle-label strong"><input type="checkbox" id="bulk-auto-create-quiz" checked onchange="toggleBulkQuizFields()"> Make a new quiz with exactly these questions</label>
+      <div id="bulk-quiz-fields" class="bulk-quiz-fields"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeModal('modal-bulk-import')">Cancel</button>
+      <button class="btn-primary" id="btn-bulk-import" onclick="executeBulkImport()"><i data-icon="upload"></i> Import</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-create-quiz" data-sticky="1">
+  <div class="modal modal-lg">
+    <div class="modal-header"><h3 id="modal-quiz-title">Create Quiz</h3><button onclick="closeModal('modal-create-quiz')"><i data-icon="x"></i></button></div>
+    <div class="modal-body">
+      <div id="quiz-repick-wrap" style="display:none" class="settings-box">
+        <div class="settings-box-title"><i data-icon="list"></i> <span id="quiz-current-q"></span></div>
+        <label class="toggle-label"><input type="checkbox" id="quiz-repick" onchange="onQuizRepickToggle()"> Pick a new set of questions</label>
+      </div>
+      <div id="quiz-source-box" class="settings-box">
+        <div class="settings-box-title"><i data-icon="list"></i> Questions from the bank</div>
+        <div class="form-row">
+          <div class="form-group"><label>Subject</label><select id="quiz-subject" class="modal-input" onchange="onQuizSubjectChange()"></select></div>
+          <div class="form-group"><label>Chapter</label><select id="quiz-chapter" class="modal-input" onchange="updatePoolInfo()"></select></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label>Number of questions <span class="hint" id="quiz-pool-info"></span></label><input id="quiz-num-q" type="number" min="1" value="20" class="modal-input"></div>
+          <div class="form-group"><label>Which questions?</label><select id="quiz-pick-mode" class="modal-input"><option value="latest">Latest added</option><option value="random">Random from the chapter</option></select></div>
+        </div>
+      </div>
+      <div id="quiz-settings-fields"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeModal('modal-create-quiz')">Cancel</button><button class="btn-primary" onclick="saveQuiz()">Save Quiz</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-edit-student">
+  <div class="modal">
+    <div class="modal-header"><h3>Edit Student</h3><button onclick="closeModal('modal-edit-student')"><i data-icon="x"></i></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label>Full name</label><input id="es-name" class="modal-input"></div>
+      <div class="form-group"><label>Admission No (login – cannot change)</label><input id="es-adm" class="modal-input" disabled></div>
+      <div class="form-row">
+        <div class="form-group"><label>Centre</label><select id="es-centre" class="modal-input"></select></div>
+        <div class="form-group"><label>Class</label><select id="es-class" class="modal-input"></select></div>
+      </div>
+      <div class="form-group"><label>Batch</label><input id="es-batch" class="modal-input"></div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeModal('modal-edit-student')">Cancel</button><button class="btn-primary" onclick="saveStudent()">Save</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-review">
+  <div class="modal modal-lg">
+    <div class="modal-header"><h3 id="review-title">Answers</h3><button onclick="closeModal('modal-review')"><i data-icon="x"></i></button></div>
+    <div class="modal-body answer-review" id="review-body"></div>
+  </div>
+</div>
+
+</body>
+</html>
