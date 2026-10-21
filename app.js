@@ -51,6 +51,7 @@ const ERR = {
   TIME_OVER: 'സമയം കഴിഞ്ഞു. നിങ്ങളുടെ ഉത്തരങ്ങൾ submit ചെയ്തു.',
   NOT_STARTED: 'Quiz ഇതുവരെ തുടങ്ങിയിട്ടില്ല.',
   ENTRY_CLOSED: 'Quiz-ൽ കയറാനുള്ള സമയം കഴിഞ്ഞു.',
+  QUIZ_CLOSED: 'ഈ quiz അടച്ചു (Close time കഴിഞ്ഞു).',
   NO_QUESTIONS: 'ഈ quiz-ൽ ചോദ്യങ്ങളില്ല.',
   REVIEW_LOCKED: 'Quiz എല്ലാവർക്കും അവസാനിച്ച ശേഷം ഉത്തരങ്ങൾ കാണാം.',
   NOT_SUBMITTED: 'Quiz ഇതുവരെ submit ചെയ്തിട്ടില്ല.',
@@ -255,13 +256,18 @@ const profileById = id => cache.profiles.find(p => p.id === id) || {};
 function quizStatus(q) {
   const now = serverNow();
   const start = q.start_at ? new Date(q.start_at).getTime() : null;
-  const close = q.entry_close_at ? new Date(q.entry_close_at).getTime() : null;
-  const end = close ? close + q.duration_min * 60000 : null;
-  if (!q.active) return { key: 'draft', label: 'Off', start, close, end };
-  if (start && now < start) return { key: 'scheduled', label: 'Scheduled', start, close, end };
-  if (!close || now <= close) return { key: 'live', label: 'LIVE', start, close, end };
-  if (end && now <= end) return { key: 'closing', label: 'Entry closed', start, close, end };
-  return { key: 'ended', label: 'Ended', start, close, end };
+  const close = q.entry_close_at ? new Date(q.entry_close_at).getTime() : null;      // last time to START
+  const endAt = q.end_at ? new Date(q.end_at).getTime() : null;                      // quiz closes completely
+  const ends = [endAt, close ? close + q.duration_min * 60000 : null].filter(x => x !== null);
+  const end = ends.length ? Math.min(...ends) : null;                                 // over for everybody
+  const lastStart = [close, endAt].filter(x => x !== null);
+  const startBy = lastStart.length ? Math.min(...lastStart) : null;                   // nobody can start after this
+  const r = { start, close, end, endAt, startBy };
+  if (!q.active) return { key: 'draft', label: 'Off', ...r };
+  if (end && now >= end) return { key: 'ended', label: 'Closed', ...r };
+  if (start && now < start) return { key: 'scheduled', label: 'Scheduled', ...r };
+  if (!startBy || now < startBy) return { key: 'live', label: 'LIVE', ...r };
+  return { key: 'closing', label: 'Entry closed', ...r };
 }
 
 // ════════════════════════════════════════════════════════
@@ -883,9 +889,10 @@ function renderSubjects() {
         <div class="subject-actions"><button class="icon-btn danger" title="Delete subject" onclick="deleteSubject('${s.id}')">${icon('trash')}</button></div>
       </div>
       <div class="subject-card-body"><div class="chapters-list">
-        ${chs.map((c, i) => `<div class="chapter-item"><span class="chapter-num">${i + 1}</span><span class="chapter-name">${escapeHTML(c.name)}</span>
+        ${chs.map((c, i) => `<div class="chapter-item clickable" title="Show the quizzes of this chapter" onclick="openChapterInQuizzes('${c.id}')"><span class="chapter-num">${i + 1}</span><span class="chapter-name">${escapeHTML(c.name)}</span>
+          <span class="chapter-q-count">${cache.quizzes.filter(z => z.chapter_id === c.id).length} quiz</span>
           <span class="chapter-q-count">${cache.questions.filter(q => q.chapter_id === c.id).length} Q</span>
-          <button class="icon-btn danger tiny" title="Delete chapter" onclick="deleteChapter('${c.id}')">${icon('x')}</button></div>`).join('')}
+          <button class="icon-btn danger tiny" title="Delete chapter" onclick="event.stopPropagation();deleteChapter('${c.id}')">${icon('x')}</button></div>`).join('')}
       </div>
       <button class="add-chapter-btn" onclick="openAddChapter('${s.id}')">${icon('plus')} Add Chapter</button></div>
     </div>`;
@@ -1062,28 +1069,42 @@ async function deleteQuestion(id) {
 // QUIZ SETTINGS FORM (shared by "Create Quiz" and "Bulk Import")
 // ════════════════════════════════════════════════════════
 
+function scheduleHTML(p) {
+  return `<div class="settings-box">
+    <div class="settings-box-title">${icon('clock')} Open & close time</div>
+    <div class="form-row">
+      <div class="form-group"><label>🟢 Opens at <span class="hint">(empty = opens now)</span></label><input id="${p}-start" type="datetime-local" class="modal-input" oninput="updateSchedulePreview('${p}')"></div>
+      <div class="form-group"><label>🔴 Closes at <span class="hint">(empty = until you switch OFF)</span></label><input id="${p}-end" type="datetime-local" class="modal-input" oninput="updateSchedulePreview('${p}')"></div>
+    </div>
+    <div class="quick-chips">
+      <span class="hint">Open:</span>
+      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','now')">Now</button>
+      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','today21')">Today 9 PM</button>
+      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','tomorrow21')">Tomorrow 9 PM</button>
+    </div>
+    <div class="quick-chips">
+      <span class="hint">Close:</span>
+      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','end30')">+30 min</button>
+      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','end60')">+1 hour</button>
+      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','endDay')">Same day 11:59 PM</button>
+      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','end7')">+7 days</button>
+      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','clear')">Clear</button>
+    </div>
+    <details class="en-details"><summary>Late entry limit (optional)</summary>
+      <div class="form-group"><label>Students must START before</label><input id="${p}-close" type="datetime-local" class="modal-input" oninput="updateSchedulePreview('${p}')"></div>
+    </details>
+    <div class="schedule-preview" id="${p}-schedule-preview"></div>
+  </div>`;
+}
+
 function quizSettingsHTML(p) {
   return `
   <div class="form-group"><label>Quiz title</label><input id="${p}-title" class="modal-input" placeholder="e.g. Electrochemistry – Daily Test 1"></div>
   <div class="form-row">
-    <div class="form-group"><label>Duration (minutes)</label><input id="${p}-duration" type="number" min="1" max="600" class="modal-input" value="20"></div>
+    <div class="form-group"><label>Duration (minutes)</label><input id="${p}-duration" type="number" min="1" max="600" class="modal-input" value="20" oninput="updateSchedulePreview('${p}')"></div>
     <div class="form-group"><label>Pass mark (%)</label><input id="${p}-pass" type="number" min="0" max="100" class="modal-input" value="40"></div>
   </div>
-  <div class="settings-box">
-    <div class="settings-box-title">${icon('clock')} Schedule</div>
-    <div class="form-row">
-      <div class="form-group"><label>Start date & time <span class="hint">(empty = open now)</span></label><input id="${p}-start" type="datetime-local" class="modal-input" oninput="updateSchedulePreview('${p}')"></div>
-      <div class="form-group"><label>Last time to START <span class="hint">(late entry)</span></label><input id="${p}-close" type="datetime-local" class="modal-input" oninput="updateSchedulePreview('${p}')"></div>
-    </div>
-    <div class="quick-chips">
-      <span class="hint">Quick:</span>
-      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','today21')">Today 9:00 PM</button>
-      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','tomorrow21')">Tomorrow 9:00 PM</button>
-      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','close15')">Late entry +15 min</button>
-      <button type="button" class="chip-btn" onclick="quickSchedule('${p}','clear')">Clear</button>
-    </div>
-    <div class="schedule-preview" id="${p}-schedule-preview"></div>
-  </div>
+  ${scheduleHTML(p)}
   <div class="settings-box">
     <div class="settings-box-title">${icon('zap')} Answer feedback</div>
     <div class="mode-cards">
@@ -1123,6 +1144,7 @@ function mountQuizSettings(containerId, p, quiz = null) {
     $(`${p}-pass`).value = quiz.pass_pct;
     $(`${p}-start`).value = toLocalInput(quiz.start_at);
     $(`${p}-close`).value = toLocalInput(quiz.entry_close_at);
+    $(`${p}-end`).value = toLocalInput(quiz.end_at);
     document.querySelectorAll(`input[name="${p}-mode"]`).forEach(r => r.checked = r.value === quiz.mode);
     $(`${p}-review`).value = quiz.review_policy;
     $(`${p}-shuffle-q`).checked = quiz.shuffle_questions;
@@ -1133,17 +1155,19 @@ function mountQuizSettings(containerId, p, quiz = null) {
 }
 
 function quickSchedule(p, kind) {
-  const d = new Date();
-  if (kind === 'today21' || kind === 'tomorrow21') {
-    if (kind === 'tomorrow21') d.setDate(d.getDate() + 1);
-    d.setHours(21, 0, 0, 0);
-    $(`${p}-start`).value = toLocalInput(d.toISOString());
-    const c = new Date(d.getTime() + 15 * 60000);
-    $(`${p}-close`).value = toLocalInput(c.toISOString());
-  } else if (kind === 'close15') {
-    const s = $(`${p}-start`).value ? new Date($(`${p}-start`).value) : new Date();
-    $(`${p}-close`).value = toLocalInput(new Date(s.getTime() + 15 * 60000).toISOString());
-  } else { $(`${p}-start`).value = ''; $(`${p}-close`).value = ''; }
+  const set = (id, d) => { $(`${p}-${id}`).value = d ? toLocalInput(d.toISOString()) : ''; };
+  const openAt = () => $(`${p}-start`).value ? new Date($(`${p}-start`).value) : new Date();
+  if (kind === 'now') set('start', null);
+  else if (kind === 'today21' || kind === 'tomorrow21') {
+    const d = new Date(); if (kind === 'tomorrow21') d.setDate(d.getDate() + 1); d.setHours(21, 0, 0, 0);
+    set('start', d);
+    if (!$(`${p}-end`).value) set('end', new Date(d.getTime() + 60 * 60000));   // default: open for 1 hour
+  }
+  else if (kind === 'end30') set('end', new Date(openAt().getTime() + 30 * 60000));
+  else if (kind === 'end60') set('end', new Date(openAt().getTime() + 60 * 60000));
+  else if (kind === 'endDay') { const d = openAt(); d.setHours(23, 59, 0, 0); set('end', d); }
+  else if (kind === 'end7') set('end', new Date(openAt().getTime() + 7 * 86400000));
+  else { set('start', null); set('end', null); set('close', null); }
   updateSchedulePreview(p);
 }
 
@@ -1153,26 +1177,31 @@ function updateSchedulePreview(p) {
   const mode = (document.querySelector(`input[name="${p}-mode"]:checked`) || {}).value;
   if ($(`${p}-review-wrap`)) $(`${p}-review-wrap`).style.display = mode === 'practice' ? 'none' : '';
   const s = $(`${p}-start`).value ? new Date($(`${p}-start`).value) : null;
-  const c = $(`${p}-close`).value ? new Date($(`${p}-close`).value) : null;
-  const dur = parseInt($(`${p}-duration`).value) || 0;
+  const e = $(`${p}-end`) && $(`${p}-end`).value ? new Date($(`${p}-end`).value) : null;
+  const c = $(`${p}-close`) && $(`${p}-close`).value ? new Date($(`${p}-close`).value) : null;
+  const dur = parseInt(($(`${p}-duration`) || {}).value) || 0;
   const t = d => d.toLocaleString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true });
-  let html = '';
-  if (s && c && c <= s) html = `<span class="warn">⚠ Late-entry time must be after the start time.</span>`;
+  let html;
+  if (e && s && e <= s) html = `<span class="warn">⚠ Close time must be after the open time.</span>`;
+  else if (c && s && c <= s) html = `<span class="warn">⚠ Late-entry time must be after the open time.</span>`;
+  else if (e && e <= new Date()) html = `<span class="warn">⚠ This close time is already over – students will not be able to start.</span>`;
   else {
-    html += s ? `Opens <b>${t(s)}</b>` : 'Opens <b>as soon as it is ON</b>';
-    html += c ? ` · students can start until <b>${t(c)}</b> · everyone finishes by <b>${t(new Date(c.getTime() + dur * 60000))}</b>` : ' · stays open until you switch it OFF';
-    html += ` · each student gets <b>${dur} min</b> from the moment they start.`;
+    html = (s ? `🟢 Opens <b>${t(s)}</b>` : '🟢 Opens <b>as soon as it is ON</b>') +
+      (e ? ` · 🔴 Closes <b>${t(e)}</b>` : ' · stays open until you switch it OFF') +
+      (c ? ` · must start before <b>${t(c)}</b>` : '') +
+      ` · each student gets <b>${dur} min</b> from the moment they start` +
+      (e ? ' (less if the close time comes first – then it submits automatically).' : '.');
   }
   el.innerHTML = html;
 }
 
 function readQuizSettings(p) {
-  const start = fromLocalInput($(`${p}-start`).value), close = fromLocalInput($(`${p}-close`).value);
+  const start = fromLocalInput($(`${p}-start`).value), close = fromLocalInput($(`${p}-close`).value), end = fromLocalInput($(`${p}-end`).value);
   const s = {
     title: val(`${p}-title`),
     duration_min: Math.min(600, Math.max(1, parseInt($(`${p}-duration`).value) || 20)),
     pass_pct: Math.min(100, Math.max(0, parseInt($(`${p}-pass`).value) || 0)),
-    start_at: start, entry_close_at: close,
+    start_at: start, entry_close_at: close, end_at: end,
     mode: (document.querySelector(`input[name="${p}-mode"]:checked`) || {}).value || 'exam',
     review_policy: val(`${p}-review`) || 'after_end',
     target_class: val(`${p}-tclass`), target_centre: val(`${p}-tcentre`), target_batch: val(`${p}-tbatch`),
@@ -1180,7 +1209,8 @@ function readQuizSettings(p) {
     active: $(`${p}-active`).checked
   };
   if (!s.title) { showToast('Quiz title is required', 'error'); return null; }
-  if (start && close && new Date(close) <= new Date(start)) { showToast('Late-entry time must be after the start time', 'error'); return null; }
+  if (start && close && new Date(close) <= new Date(start)) { showToast('Late-entry time must be after the open time', 'error'); return null; }
+  if (start && end && new Date(end) <= new Date(start)) { showToast('Close time must be after the open time', 'error'); return null; }
   return s;
 }
 
@@ -1414,6 +1444,8 @@ function openFileImport() {
   const batches = [...new Set(students().map(s => (s.batch || '').trim()).filter(Boolean))].sort();
   fillSelect('fi-batch', batches, { placeholder: 'All batches' });
   fillSelect('fi-centre', CONFIG.CENTRES, { placeholder: 'All centres' });
+  $('fi-schedule').innerHTML = scheduleHTML('fi');
+  updateSchedulePreview('fi');
   openModal('modal-file-import');
 }
 
@@ -1444,7 +1476,8 @@ const biText = (x) => (x && typeof x === 'object') ? { ml: String(x.ml || x.en |
 
 function normaliseQuizFile(arr) {
   return arr.map((x, i) => {
-    const subjEn = String(x.sen || x.subject || x.s || 'General').trim();
+    // "Physics Part 1" / "Physics Part 2" → one subject "Physics" (chapters keep their own numbers)
+    const subjEn = String(x.sen || x.subject || x.s || 'General').trim().replace(/\s*[-–(]?\s*Part\s*\d+\)?$/i, '');
     const subjEnNice = subjEn.charAt(0).toUpperCase() + subjEn.slice(1);
     const title = biText(x.t || x.title || ('Quiz ' + (i + 1)));
     const unit = x.u ?? x.unit ?? '';
@@ -1456,7 +1489,7 @@ function normaliseQuizFile(arr) {
     const problems = qs.filter(q => !q.q.ml || q.o.length < 2 || q.a < 0 || q.a >= q.o.length).length;
     const label = String(x.lab || (unit !== '' ? 'Unit ' + unit : '')).trim();   // "Unit 5" / "Ch 1"
     return {
-      subject: subjEnNice, subjectMl: String(x.sml || '').trim(), unit, title,
+      subject: subjEnNice, subjectMl: String(x.sml || '').trim().replace(/\s*ഭാഗം\s*\d+$/, ''), unit, title,
       chapter: (label ? `${label} – ` : '') + title.en + (title.ml && title.ml !== title.en ? ` (${title.ml})` : ''),
       quizTitleBase: `${subjEnNice}${label ? ' ' + label : ''} – ${title.en}`,
       questions: qs, problems, selected: problems === 0 && qs.length > 0
@@ -1521,7 +1554,10 @@ async function executeFileImport() {
   const main = x => lang === 'en' ? x.en : x.ml;
   const eng = x => lang === 'both' && x.en !== x.ml ? x.en : '';
   const L = ['A', 'B', 'C', 'D'];
+  const fiStart = fromLocalInput($('fi-start').value), fiEnd = fromLocalInput($('fi-end').value), fiClose = fromLocalInput($('fi-close').value);
+  if (fiStart && fiEnd && new Date(fiEnd) <= new Date(fiStart)) return showToast('Close time must be after the open time', 'error');
   const settings = {
+    start_at: fiStart, end_at: fiEnd, entry_close_at: fiClose,
     duration_min: Math.min(600, Math.max(1, parseInt($('fi-duration').value) || 20)), pass_pct: 40,
     mode: val('fi-mode'), review_policy: val('fi-mode') === 'practice' ? 'immediate' : 'after_end',
     shuffle_questions: false, shuffle_options: false,
@@ -1580,11 +1616,21 @@ async function executeFileImport() {
 // QUIZZES
 // ════════════════════════════════════════════════════════
 
+let quizChapterFilter = '';
+function openChapterInQuizzes(chapterId) { quizChapterFilter = chapterId; showAdminSection('quizzes'); }
+function clearQuizFilter() { quizChapterFilter = ''; renderQuizzes(); }
+
 function renderQuizzes() {
   const grid = $('quizzes-grid');
+  const fc = $('quiz-filter-chip');
+  if (quizChapterFilter && !cache.chapters.some(c => c.id === quizChapterFilter)) quizChapterFilter = '';
+  fc.innerHTML = quizChapterFilter ? `<span class="filter-chip">${icon('book')} ${escapeHTML(subjectName((cache.chapters.find(c => c.id === quizChapterFilter) || {}).subject_id))} › ${escapeHTML(chapterName(quizChapterFilter))}
+    <button onclick="clearQuizFilter()" title="Show all quizzes">✕ Show all</button></span>` : '';
   if (!cache.quizzes.length) { grid.innerHTML = '<div class="empty-state">No quizzes yet. Fastest way: <b>Question Bank → Bulk Import</b> → paste 20 questions → set the time.</div>'; return; }
   const order = { live: 0, closing: 1, scheduled: 2, draft: 3, ended: 4 };
-  const list = [...cache.quizzes].sort((a, b) => order[quizStatus(a).key] - order[quizStatus(b).key] || b.created_at.localeCompare(a.created_at));
+  const list = cache.quizzes.filter(q => !quizChapterFilter || q.chapter_id === quizChapterFilter)
+    .sort((a, b) => order[quizStatus(a).key] - order[quizStatus(b).key] || b.created_at.localeCompare(a.created_at));
+  if (!list.length) { grid.innerHTML = '<div class="empty-state">No quizzes in this chapter yet. Use <b>Paste questions</b> or <b>Import quiz file</b>.</div>'; return; }
   grid.innerHTML = list.map(q => {
     const s = quizStatus(q);
     const att = cache.attempts.filter(a => a.quiz_id === q.id);
@@ -1610,12 +1656,14 @@ function renderQuizzes() {
         </div>
         <div class="quiz-schedule">
           <div>${icon('calendar')} ${q.start_at ? 'Starts ' + fmtDateTime(q.start_at) : 'Opens when ON'}</div>
-          <div>${icon('clock')} ${q.entry_close_at ? 'Late entry till ' + fmtDateTime(q.entry_close_at) : 'No late-entry limit'}</div>
+          <div>${icon('clock')} ${q.end_at ? (s.key === 'ended' ? 'Closed ' : 'Closes ') + fmtDateTime(q.end_at) : 'No close time (open until OFF)'}</div>
+          ${q.entry_close_at ? `<div>${icon('clock')} Must start before ${fmtDateTime(q.entry_close_at)}</div>` : ''}
           <div>${icon('users')} ${done} submitted${inProg ? ` · <span class="t-green">${inProg} writing now</span>` : ''}</div>
         </div>
         <div class="quiz-card-actions">
           <button class="icon-btn" onclick="openEditQuiz('${q.id}')">${icon('edit')} Edit</button>
           <button class="icon-btn" onclick="duplicateQuiz('${q.id}')">${icon('copy')} Copy</button>
+          ${['live', 'closing'].includes(s.key) ? `<button class="icon-btn danger" onclick="closeQuizNow('${q.id}')">${icon('lock')} Close now</button>` : ''}
           <button class="icon-btn" onclick="openAnalyticsFor('${q.id}')">${icon('chart')} Analysis</button>
           <button class="icon-btn danger" onclick="deleteQuiz('${q.id}')">${icon('trash')}</button>
         </div>
@@ -1707,11 +1755,23 @@ async function toggleQuizActive(id, cb) {
   renderQuizzes();
 }
 
+async function closeQuizNow(id) {
+  const q = cache.quizzes.find(x => x.id === id);
+  const writing = cache.attempts.filter(a => a.quiz_id === id && !a.submitted_at).length;
+  if (!confirm(`Close "${q.title}" now?${writing ? `\n${writing} student(s) still writing will be submitted automatically.` : ''}`)) return;
+  const { error } = await sb.from('qm_quizzes').update({ end_at: new Date(serverNow()).toISOString() }).eq('id', id);
+  if (error) return dbError(error);
+  await rpc('qm_admin_finalize_expired').catch(() => 0);
+  await reload('quizzes', 'attempts');
+  showToast(`"${q.title}" closed`, 'info');
+  renderQuizzes();
+}
+
 async function duplicateQuiz(id) {
   const q = cache.quizzes.find(x => x.id === id);
   if (!q) return;
   const { id: _i, created_at: _c, ...rest } = q;
-  const { data, error } = await sb.from('qm_quizzes').insert({ ...rest, title: q.title + ' (copy)', active: false, start_at: null, entry_close_at: null }).select().single();
+  const { data, error } = await sb.from('qm_quizzes').insert({ ...rest, title: q.title + ' (copy)', active: false, start_at: null, entry_close_at: null, end_at: null }).select().single();
   if (error) return dbError(error);
   await reload('quizzes');
   showToast('Quiz copied (switched OFF). Set the new time and switch it ON.', 'success');
@@ -2119,51 +2179,110 @@ function studentQuizState(q) {
   if (att && new Date(att.deadline).getTime() > now) return { key: 'resume', att, s };
   if (att) return { key: 'expired', att, s };
   if (s.key === 'scheduled') return { key: 'soon', s, ms: s.start - now };
-  if (s.key === 'live') return { key: 'open', s, closeMs: s.close ? s.close - now : null };
+  if (s.key === 'live') return { key: 'open', s, closeMs: s.startBy ? s.startBy - now : null };
   return { key: 'closed', s };
 }
 
+// ── Student home: Subject buttons → chapter list. Tap a chapter to open its quiz. ──
+const SUBJECT_ML = { physics: 'ഭൗതികശാസ്ത്രം', chemistry: 'രസതന്ത്രം', biology: 'ജീവശാസ്ത്രം', english: 'ഇംഗ്ലീഷ്', mathematics: 'ഗണിതം', maths: 'ഗണിതം',
+  history: 'ചരിത്രം', geography: 'ഭൂമിശാസ്ത്രം', 'social science': 'സാമൂഹ്യശാസ്ത്രം', malayalam: 'മലയാളം', hindi: 'ഹിന്ദി', 'information technology': 'വിവരസാങ്കേതികവിദ്യ', it: 'ഐ.ടി.' };
+function subjectLabel(name) {
+  const ml = SUBJECT_ML[String(name || '').toLowerCase()];
+  return getLang() === 'ml' && ml ? ml : name;
+}
+// "Unit 5 – Electrical Energy (വൈദ്യുതോർജം)" → shows the Malayalam or English part by the medium toggle
+function chapterLabel(name) {
+  const m = String(name || '').match(/^(.*?)\s+–\s+(.*?)\s+\(([^()]*)\)\s*$/);
+  if (!m) {
+    const k = String(name || '').match(/^((?:Unit|Ch|Chapter)\s*\d+)\s+–\s+(.*)$/);   // "Ch 1 – खिड़की"
+    return k ? { label: k[1], text: k[2] } : { label: '', text: name || '' };
+  }
+  return { label: m[1], text: getLang() === 'ml' && /[ഀ-ൿ]/.test(m[3]) ? m[3] : m[2] };
+}
+const SUBJECT_ORDER = ['physics', 'chemistry', 'biology', 'mathematics', 'maths', 'social science', 'history', 'geography', 'economics', 'english', 'malayalam', 'hindi', 'information technology', 'it'];
+function subjectRank(name) { const i = SUBJECT_ORDER.indexOf(String(name || '').toLowerCase()); return i === -1 ? 99 : i; }
+let studentSubject = (() => { try { return localStorage.getItem('qm_subj') || ''; } catch (e) { return ''; } })();
+function pickStudentSubject(id) { studentSubject = id; try { localStorage.setItem('qm_subj', id); } catch (e) { } renderAvailableQuizzes(); const a = document.querySelector('.subj-chip.active'); if (a) a.scrollIntoView({ block: 'nearest', inline: 'center' }); }
+
 function renderAvailableQuizzes() {
   const grid = $('student-quizzes-grid');
-  const order = { resume: 0, open: 1, soon: 2, expired: 3, done: 4, closed: 5 };
-  const list = cache.quizzes.map(q => ({ q, st: studentQuizState(q) }))
-    .filter(x => !(x.st.key === 'closed'))       // hide quizzes that closed before the student joined
-    .sort((a, b) => order[a.st.key] - order[b.st.key] || (a.q.start_at || '').localeCompare(b.q.start_at || ''));
+  const en = getLang() === 'en';
+  const list = cache.quizzes.map(q => ({ q, st: studentQuizState(q) })).filter(x => x.st.key !== 'closed');
   if (!list.length) {
+    $('student-subject-chips').innerHTML = '';
     grid.innerHTML = '<div class="empty-state">ഇപ്പോൾ quiz ഒന്നുമില്ല. ടീച്ചർ quiz ഇടുമ്പോൾ ഇവിടെ കാണാം.<br><span class="small">No quizzes right now.</span></div>';
     return;
   }
-  grid.innerHTML = list.map(({ q, st }) => {
-    const nQ = (q.question_ids || []).length;
-    let action = '';
-    if (st.key === 'open') action = `<button class="btn-start-quiz" onclick="startQuiz('${q.id}')">${icon('play')} Start Quiz</button>`;
-    else if (st.key === 'resume') action = `<button class="btn-start-quiz resume" onclick="startQuiz('${q.id}')">${icon('play')} Continue Quiz</button>`;
-    else if (st.key === 'soon') action = `<button class="btn-start-quiz" disabled>${icon('clock')} Starts in <span class="countdown" data-until="${st.s.start}">${fmtCountdown(st.ms)}</span></button>`;
-    else if (st.key === 'done') action = st.att.review_open
-      ? `<button class="btn-start-quiz done" onclick="openReview('${st.att.attempt_id}')">${icon('eye')} See answers</button>`
-      : `<button class="btn-start-quiz" disabled>${icon('lock')} Answers after the quiz ends</button>`;
-    else action = `<button class="btn-start-quiz" disabled>Time over</button>`;
-
-    const scoreLine = st.key === 'done' ? `<div class="sqc-score"><b>${+st.att.score} / ${+st.att.total_marks}</b> · ${fmtPct(pct(st.att.score, st.att.total_marks))}</div>` : '';
-    return `<div class="student-quiz-card state-${st.key}">
-      <div class="sqc-header">
-        <span class="sqc-subject-badge">${escapeHTML(subjectName(q.subject_id) || 'Quiz')}</span>
-        <div class="sqc-title">${escapeHTML(q.title)}</div>
-        <div class="sqc-chapter">${escapeHTML(chapterName(q.chapter_id))}</div>
-        ${['open', 'resume'].includes(st.key) ? '<div class="live-dot" title="Live"></div>' : ''}
-      </div>
-      <div class="sqc-body">
-        <div class="sqc-meta">
-          <span class="sqc-meta-item">${icon('list')} ${nQ} questions</span>
-          <span class="sqc-meta-item">${icon('clock')} ${q.duration_min} min</span>
-          <span class="sqc-meta-item">${q.mode === 'practice' ? '⚡ ഉടനെ ഉത്തരം' : '📝 Exam'}</span>
-        </div>
-        ${q.start_at && st.key === 'soon' ? `<div class="sqc-when">${icon('calendar')} ${fmtDateTime(q.start_at)}</div>` : ''}
-        ${st.key === 'open' && st.closeMs !== null ? `<div class="sqc-when warn">${icon('clock')} Start before ${fmtDateTime(q.entry_close_at)} (<span class="countdown" data-until="${st.s.close}">${fmtCountdown(st.closeMs)}</span> left)</div>` : ''}
-        ${st.key === 'done' ? `<div class="sqc-when ok">✓ Submitted</div>${scoreLine}` : ''}
-        ${action}
-      </div></div>`;
+  // subjects that have quizzes
+  const subjIds = [...new Set(list.map(x => x.q.subject_id || ''))];
+  const subjects = subjIds.map(id => ({ id, name: subjectName(id) || (en ? 'Other' : 'മറ്റുള്ളവ'), color: (cache.subjects.find(s => s.id === id) || {}).color || '#667eea' }))
+    .sort((a, b) => subjectRank(a.name) - subjectRank(b.name) || a.name.localeCompare(b.name));
+  if (studentSubject && !subjIds.includes(studentSubject)) studentSubject = '';
+  const liveCount = id => list.filter(x => (!id || x.q.subject_id === id) && ['open', 'resume'].includes(x.st.key)).length;
+  $('student-subject-chips').innerHTML = [{ id: '', name: en ? 'All' : 'എല്ലാം', color: '#667eea' }, ...subjects].map(s => {
+    const n = liveCount(s.id);
+    return `<button class="subj-chip ${studentSubject === s.id ? 'active' : ''}" style="--c:${escapeHTML(s.color)}" onclick="pickStudentSubject('${s.id}')">
+      ${s.id ? `<span class="subj-dot"></span>` : ''}${escapeHTML(s.id ? subjectLabel(s.name) : s.name)}${n ? `<span class="subj-live">${n}</span>` : ''}</button>`;
   }).join('');
+
+  const shown = subjects.filter(s => !studentSubject || s.id === studentSubject);
+  grid.innerHTML = shown.map(s => {
+    const items = list.filter(x => (x.q.subject_id || '') === s.id).sort((a, b) => {
+      const ca = cache.chapters.find(c => c.id === a.q.chapter_id) || {}, cb = cache.chapters.find(c => c.id === b.q.chapter_id) || {};
+      return (ca.sort_order || 0) - (cb.sort_order || 0) || a.q.title.localeCompare(b.q.title);
+    });
+    // how many quizzes share a chapter → then show the quiz title too
+    const perChapter = {};
+    items.forEach(x => perChapter[x.q.chapter_id] = (perChapter[x.q.chapter_id] || 0) + 1);
+    return `<section class="subj-block">
+      <div class="subj-head" style="--c:${escapeHTML(s.color)}"><span class="subj-dot"></span><h3>${escapeHTML(subjectLabel(s.name))}</h3><span class="t-muted small">${items.length} ${en ? 'chapters' : 'അധ്യായങ്ങൾ'}</span></div>
+      <div class="ch-list">${items.map(x => chapterRowHTML(x.q, x.st, perChapter[x.q.chapter_id] > 1 || !x.q.chapter_id)).join('')}</div>
+    </section>`;
+  }).join('');
+}
+
+function chapterRowHTML(q, st, showTitle) {
+  const en = getLang() === 'en';
+  const ch = chapterLabel(chapterName(q.chapter_id) || q.title);
+  const num = (ch.label.match(/\d+/) || [''])[0];
+  const nQ = (q.question_ids || []).length;
+  let status = '', act = '';
+  if (st.key === 'open') {
+    act = `<span class="ch-btn go">${en ? 'Start' : 'തുടങ്ങുക'} ${icon('play')}</span>`;
+    if (st.closeMs !== null) status = `<span class="warn">${icon('clock')} ${en ? 'Closes in' : 'അടയാൻ'} <span class="countdown" data-until="${st.s.startBy}">${fmtCountdown(st.closeMs)}</span></span>`;
+  } else if (st.key === 'resume') {
+    act = `<span class="ch-btn resume">${en ? 'Continue' : 'തുടരുക'} ${icon('play')}</span>`;
+    status = `<span class="warn">${en ? 'In progress' : 'എഴുതിക്കൊണ്ടിരിക്കുന്നു'}</span>`;
+  } else if (st.key === 'soon') {
+    act = `<span class="ch-btn wait">${icon('clock')} <span class="countdown" data-until="${st.s.start}">${fmtCountdown(st.ms)}</span></span>`;
+    status = `${en ? 'Opens' : 'തുറക്കുന്നത്'} ${fmtDateTime(q.start_at)}`;
+  } else if (st.key === 'done') {
+    const p = pct(st.att.score, st.att.total_marks);
+    act = `<span class="ch-score ${p >= (st.att.pass_pct ?? 40) ? 'pass' : 'fail'}">${+st.att.score}/${+st.att.total_marks}</span>`;
+    status = `<span class="t-green">✓ ${en ? 'Done' : 'പൂർത്തിയായി'}</span> · ${st.att.review_open ? (en ? 'tap to see answers' : 'ഉത്തരങ്ങൾ കാണാൻ തൊടുക') : '🔒 ' + (en ? 'answers later' : 'ഉത്തരങ്ങൾ പിന്നീട്')}`;
+  } else {
+    act = `<span class="ch-btn off">${en ? 'Time over' : 'സമയം കഴിഞ്ഞു'}</span>`;
+  }
+  return `<div class="ch-row state-${st.key}" data-title="${escapeHTML(q.title)}" role="button" tabindex="0" onclick="openChapterQuiz('${q.id}')" onkeydown="if(event.key==='Enter')openChapterQuiz('${q.id}')">
+    <div class="ch-num">${num || icon('list')}</div>
+    <div class="ch-main">
+      <div class="ch-name">${escapeHTML(ch.text)}</div>
+      ${showTitle ? `<div class="ch-title">${escapeHTML(q.title)}</div>` : ''}
+      <div class="ch-sub">${nQ} Q · ${q.duration_min} min · ${q.mode === 'practice' ? '⚡' : '📝'}${status ? ' · ' + status : ''}</div>
+    </div>
+    <div class="ch-act">${act}</div>
+  </div>`;
+}
+
+function openChapterQuiz(quizId) {
+  const q = cache.quizzes.find(z => z.id === quizId);
+  if (!q) return;
+  const st = studentQuizState(q), en = getLang() === 'en';
+  if (st.key === 'open' || st.key === 'resume') return startQuiz(quizId);
+  if (st.key === 'done') return st.att.review_open ? openReview(st.att.attempt_id)
+    : showToast(en ? 'Answers will be shown after the quiz ends for everyone.' : ERR.REVIEW_LOCKED, 'info');
+  if (st.key === 'soon') return showToast((en ? 'This quiz opens at ' : 'ഈ quiz തുറക്കുന്നത്: ') + fmtDateTime(q.start_at), 'info');
+  showToast(en ? 'Time for this quiz is over.' : 'ഈ quiz-ന്റെ സമയം കഴിഞ്ഞു.', 'warning');
 }
 
 function tickStudentDashboard() {
@@ -2247,7 +2366,7 @@ function startQuizRuntime() {
 }
 
 function stopQuizRuntime() {
-  clearInterval(quizTimer); quizTimer = null;
+  clearInterval(quizTimer); quizTimer = null; clearTimeout(autoNextTimer);
   document.removeEventListener('visibilitychange', onVisibilityChange);
   window.removeEventListener('beforeunload', onBeforeUnload);
   window.removeEventListener('online', flushPending);
@@ -2284,6 +2403,7 @@ function getLang() {
 function setLang(l) {
   try { localStorage.setItem('qm_lang', l); } catch (e) { }
   updateLangButtons();
+  if ($('page-student').classList.contains('active')) { renderAvailableQuizzes(); renderStudentResults(); }
   if (quizState && $('page-quiz').classList.contains('active')) renderQuizQuestion();
   if ($('modal-review').classList.contains('open') && lastReview) renderReview(lastReview.r, lastReview.attemptId);
 }
@@ -2322,17 +2442,26 @@ function renderQuizQuestion() {
   if (fb) {
     const correctLetter = DISPLAY_LETTERS[order.indexOf(fb.correct)];
     fbBox.className = 'answer-feedback ' + (fb.is_correct ? 'good' : 'bad');
-    const en = getLang() === 'en', exp = tExp(fb);
+    // only right / wrong here – explanations are shown in "See answers" after the quiz
+    const en = getLang() === 'en';
+    const last = st.currentIdx === total - 1;
+    const nextNote = st.autoNext === q.id && !last ? `<span class="fb-next">${en ? 'Next question…' : 'അടുത്ത ചോദ്യം…'}</span>` : '';
     fbBox.innerHTML = fb.is_correct
-      ? `<div class="fb-title">✓ ${en ? 'Correct!' : 'ശരിയുത്തരം!'}</div>${exp ? `<div class="fb-exp">💡 ${escapeHTML(exp)}</div>` : ''}`
-      : `<div class="fb-title">✗ ${en ? 'Wrong. Correct answer' : 'തെറ്റ്. ശരിയുത്തരം'}: ${correctLetter}) ${escapeHTML(tOpt(q, fb.correct))}</div>${exp ? `<div class="fb-exp">💡 ${escapeHTML(exp)}</div>` : ''}`;
+      ? `<div class="fb-title">✓ ${en ? 'Correct!' : 'ശരി!'}${nextNote}</div>`
+      : `<div class="fb-title">✗ ${en ? 'Wrong · Answer' : 'തെറ്റ് · ശരിയുത്തരം'}: ${correctLetter}${nextNote}</div>`;
   } else if (st.busy) {
     fbBox.className = 'answer-feedback checking'; fbBox.innerHTML = '<div class="fb-title">Checking…</div>';
   } else { fbBox.className = 'answer-feedback'; fbBox.innerHTML = ''; }
 
-  $('btn-prev').disabled = st.currentIdx === 0;
-  $('btn-next').style.display = st.currentIdx < total - 1 ? 'flex' : 'none';
-  $('btn-submit').style.display = st.currentIdx === total - 1 ? 'flex' : 'none';
+  // one question at a time: Next / Submit only after this question is answered
+  const answered = st.mode === 'practice' ? !!st.feedback[q.id] : !!st.answers[q.id];
+  const isLast = st.currentIdx === total - 1;
+  $('btn-prev').style.display = 'none';
+  $('btn-next').style.display = isLast ? 'none' : 'flex';
+  $('btn-next').disabled = !answered;
+  $('btn-submit').style.display = isLast ? 'flex' : 'none';
+  $('btn-submit').disabled = !answered;
+  $('answer-hint').textContent = answered ? '' : (getLang() === 'en' ? 'Choose an answer to continue' : 'തുടരാൻ ഒരു ഉത്തരം തിരഞ്ഞെടുക്കുക');
   updatePracticeScore();
   updateNavGrid();
 }
@@ -2360,6 +2489,7 @@ async function selectOption(key) {
       if (r.error) return handleAnswerError(r.error);
       st.feedback[q.id] = { chosen: r.chosen, correct: r.correct, is_correct: r.is_correct, explanation: r.explanation, explanation_en: r.explanation_en };
       st.answers[q.id] = r.chosen;
+      scheduleAutoNext(st, q.id, r.is_correct ? 1200 : 2000);
     } catch (e) {
       delete st.answers[q.id];
       showToast('Network problem – ഉത്തരം വീണ്ടും തിരഞ്ഞെടുക്കുക.', 'error');
@@ -2422,13 +2552,42 @@ function handleAnswerError(code) {
   } else showToast(ERR[code] || code, 'error');
 }
 
-function quizNext() { if (quizState.currentIdx < quizState.questions.length - 1) { quizState.currentIdx++; renderQuizQuestion(); scrollQuizTop(); } }
-function quizPrev() { if (quizState.currentIdx > 0) { quizState.currentIdx--; renderQuizQuestion(); scrollQuizTop(); } }
-function goToQuestion(i) { quizState.currentIdx = i; renderQuizQuestion(); scrollQuizTop(); }
-function scrollQuizTop() { if (window.innerWidth < 900) $('quiz-container').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+// after an answer: wait a moment (longer when wrong, to see the right answer), then go to the next question
+let autoNextTimer = null;
+function scheduleAutoNext(st, qid, ms) {
+  clearTimeout(autoNextTimer);
+  const idx = st.questions.findIndex(x => x.id === qid);
+  if (idx >= st.questions.length - 1) return;           // last question → student presses Submit
+  st.autoNext = qid;
+  autoNextTimer = setTimeout(() => {
+    if (quizState !== st || st.submitting || st.questions[st.currentIdx].id !== qid) return;  // student moved already
+    st.autoNext = null;
+    goToQuestion(idx + 1);
+  }, ms);
+}
+function cancelAutoNext() { clearTimeout(autoNextTimer); if (quizState) quizState.autoNext = null; }
+
+function currentAnswered() {
+  const st = quizState, q = st.questions[st.currentIdx];
+  return st.mode === 'practice' ? !!st.feedback[q.id] : !!st.answers[q.id];
+}
+function quizNext() {
+  if (!quizState || !currentAnswered()) return;                 // must answer before moving on
+  cancelAutoNext();
+  if (quizState.currentIdx < quizState.questions.length - 1) { quizState.currentIdx++; renderQuizQuestion(); scrollQuizTop(); }
+}
+function quizPrev() { /* going back is not allowed */ }
+function goToQuestion(i) {
+  // only used internally (auto-next); never lets a student skip ahead past an unanswered question
+  const st = quizState;
+  if (i > st.currentIdx && !currentAnswered()) return;
+  st.currentIdx = i; renderQuizQuestion(); scrollQuizTop();
+}
+function scrollQuizTop() { const qp = document.querySelector('.question-panel'); if (qp) qp.scrollTop = 0; if (window.innerWidth < 900 && window.innerWidth > 640) $('quiz-container').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
 
 function buildQuizNav() {
-  const html = quizState.questions.map((_, i) => `<button class="nav-btn" onclick="goToQuestion(${i})">${i + 1}</button>`).join('');
+  // progress only – students cannot jump to any question they like
+  const html = quizState.questions.map((_, i) => `<span class="nav-btn locked">${i + 1}</span>`).join('');
   $('question-nav-grid').innerHTML = html;
   $('mobile-nav-strip').innerHTML = html;
 }
@@ -2439,7 +2598,7 @@ function updateNavGrid() {
     $(id).querySelectorAll('.nav-btn').forEach((btn, i) => {
       const q = st.questions[i];
       const fb = st.feedback[q.id];
-      btn.className = 'nav-btn';
+      btn.className = 'nav-btn locked';
       if (i === st.currentIdx) btn.classList.add('current');
       else if (st.mode === 'practice' && fb) btn.classList.add(fb.is_correct ? 'right' : 'wrong');
       else if (st.answers[q.id]) btn.classList.add('answered');
@@ -2452,6 +2611,7 @@ function updateNavGrid() {
 async function submitQuiz(auto = false) {
   const st = quizState;
   if (!st || st.submitting) return;
+  if (!auto && !currentAnswered()) return showToast(getLang() === 'en' ? 'Answer this question first' : 'ആദ്യം ഈ ചോദ്യത്തിന് ഉത്തരം നൽകുക', 'warning');
   if (!auto) {
     const left = st.questions.filter(q => !st.answers[q.id]).length;
     if (!confirm(left ? `${left} ചോദ്യങ്ങൾക്ക് ഉത്തരം നൽകിയിട്ടില്ല. എങ്കിലും submit ചെയ്യട്ടെ?` : 'Quiz submit ചെയ്യട്ടെ? ഇനി മാറ്റാൻ പറ്റില്ല.')) return;

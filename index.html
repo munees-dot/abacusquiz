@@ -197,6 +197,7 @@
           <button class="btn-secondary" onclick="openBulkImportModal()"><i data-icon="upload"></i> Paste questions</button>
           <button class="btn-action" onclick="openFileImport()"><i data-icon="download"></i> Import quiz file</button>
         </div></div>
+      <div id="quiz-filter-chip"></div>
       <div class="quizzes-grid" id="quizzes-grid"></div>
     </section>
 
@@ -256,7 +257,7 @@
       <button class="stab active" data-tab="quizzes" onclick="switchStudentTab('quizzes')"><i data-icon="quiz"></i> Quizzes</button>
       <button class="stab" data-tab="results" onclick="switchStudentTab('results')"><i data-icon="trophy"></i> My Results</button>
     </div>
-    <section class="student-section active" id="stu-quizzes"><div class="student-quizzes-grid" id="student-quizzes-grid"></div></section>
+    <section class="student-section active" id="stu-quizzes"><div class="subj-chips" id="student-subject-chips"></div><div class="subj-blocks" id="student-quizzes-grid"></div></section>
     <section class="student-section" id="stu-results"><div id="student-results-summary"></div><div id="student-results-list"></div></section>
   </div>
 </div>
@@ -296,6 +297,7 @@
     </div>
     <div class="quiz-footer">
       <button class="btn-nav" id="btn-prev" onclick="quizPrev()"><i data-icon="chev-left"></i> <span class="hide-sm">Previous</span></button>
+      <span class="answer-hint" id="answer-hint"></span>
       <span class="btn-auto-save" id="btn-auto-save-status"><i data-icon="check"></i> Saved</span>
       <button class="btn-nav next-btn" id="btn-next" onclick="quizNext()"><i data-icon="chev-right"></i> Next</button>
       <button class="btn-submit" id="btn-submit" style="display:none" onclick="submitQuiz(false)"><i data-icon="send"></i> Submit</button>
@@ -460,13 +462,14 @@ Ans: B
             <option value="both">Both – students choose മലയാളം / English</option><option value="ml">Malayalam only</option><option value="en">English only</option></select></div>
           <div class="form-group"><label>Mode</label><select id="fi-mode" class="modal-input">
             <option value="practice">Practice – instant right/wrong</option><option value="exam">Exam – result at the end</option></select></div>
-          <div class="form-group"><label>Duration (min)</label><input id="fi-duration" type="number" min="1" max="600" value="20" class="modal-input"></div>
+          <div class="form-group"><label>Duration (min)</label><input id="fi-duration" type="number" min="1" max="600" value="20" class="modal-input" oninput="updateSchedulePreview('fi')"></div>
         </div>
         <div class="form-row three-eq">
           <div class="form-group"><label>Only for class</label><select id="fi-class" class="modal-input"></select></div>
           <div class="form-group"><label>Only for batch</label><select id="fi-batch" class="modal-input"></select></div>
           <div class="form-group"><label>Only for centre</label><select id="fi-centre" class="modal-input"></select></div>
         </div>
+        <div id="fi-schedule"></div>
         <label class="toggle-label"><input type="checkbox" id="fi-active" checked> Switch ON now (students can see them immediately)</label>
       </div>
     </div>
