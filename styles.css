@@ -1657,3 +1657,4 @@ input.filter-select { cursor: text; }
 #su-details { display: flex; flex-direction: column; gap: 16px; }
 .form-row.three-eq { grid-template-columns: 1fr 1fr 1fr; }
 @media (max-width: 640px) { .form-row.three-eq { grid-template-columns: 1fr; } }
+.fb-exp, .review-explanation, .opt-text, .review-option { white-space: pre-wrap; }
