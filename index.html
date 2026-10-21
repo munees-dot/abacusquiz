@@ -194,7 +194,8 @@
       <div class="section-toolbar"><h2>Quizzes</h2>
         <div class="toolbar-filters">
           <button class="btn-secondary" onclick="openCreateQuiz()"><i data-icon="plus"></i> From question bank</button>
-          <button class="btn-action" onclick="openBulkImportModal()"><i data-icon="upload"></i> Paste 20 questions → new quiz</button>
+          <button class="btn-secondary" onclick="openBulkImportModal()"><i data-icon="upload"></i> Paste questions</button>
+          <button class="btn-action" onclick="openFileImport()"><i data-icon="download"></i> Import quiz file</button>
         </div></div>
       <div class="quizzes-grid" id="quizzes-grid"></div>
     </section>
@@ -245,6 +246,7 @@
     <div class="student-brand"><svg width="28" height="28" viewBox="0 0 72 72" fill="none"><rect width="72" height="72" rx="18" fill="#667eea"/><path d="M22 37l9 9 19-20" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg> <span class="hide-sm">QuizMaster</span></div>
     <div class="student-info-bar">
       <div class="student-greeting"><span id="student-greeting-text">Welcome!</span><span class="student-badge" id="student-class-badge"></span></div>
+      <div class="lang-toggle" title="Medium"><button data-lang="ml" onclick="setLang('ml')">മലയാളം</button><button data-lang="en" onclick="setLang('en')">English</button></div>
       <button class="icon-btn" id="btn-student-refresh" title="Refresh" onclick="refreshStudent()"><i data-icon="refresh"></i></button>
       <button class="btn-logout-sm" onclick="logout()"><i data-icon="logout"></i> <span class="hide-sm">Logout</span></button>
     </div>
@@ -265,6 +267,7 @@
     <div class="quiz-header-bar">
       <div class="quiz-title-area"><h1 id="quiz-taking-title">Quiz</h1><p id="quiz-taking-subtitle"></p></div>
       <div class="quiz-meta-bar">
+        <div class="lang-toggle" title="Medium"><button data-lang="ml" onclick="setLang('ml')">മലയാളം</button><button data-lang="en" onclick="setLang('en')">English</button></div>
         <span class="quiz-progress-pill mode" id="quiz-mode-chip"></span>
         <span class="quiz-progress-pill" id="quiz-practice-score" style="display:none"></span>
         <span class="quiz-progress-pill"><span id="q-current">1</span>/<span id="q-total">1</span></span>
@@ -368,13 +371,24 @@
         <div class="form-group"><label>Subject</label><select id="q-subject" class="modal-input" onchange="populateChapterSelect('q-chapter', this.value, 'No chapter')"></select></div>
         <div class="form-group"><label>Chapter</label><select id="q-chapter" class="modal-input"></select></div>
       </div>
-      <div class="form-group"><label>Question</label><textarea id="q-text" class="modal-input" rows="3"></textarea></div>
+      <div class="form-group"><label>Question (Malayalam / main)</label><textarea id="q-text" class="modal-input" rows="3"></textarea></div>
       <div class="options-editor"><label>Options (select the correct one)</label>
         <div class="option-editor-row"><label class="opt-radio"><input type="radio" name="q-correct" value="A" checked> A</label><input id="q-opt-A" class="modal-input"></div>
         <div class="option-editor-row"><label class="opt-radio"><input type="radio" name="q-correct" value="B"> B</label><input id="q-opt-B" class="modal-input"></div>
         <div class="option-editor-row"><label class="opt-radio"><input type="radio" name="q-correct" value="C"> C</label><input id="q-opt-C" class="modal-input"></div>
         <div class="option-editor-row"><label class="opt-radio"><input type="radio" name="q-correct" value="D"> D</label><input id="q-opt-D" class="modal-input"></div>
       </div>
+      <details class="en-details">
+        <summary>English version (for English-medium students) – optional</summary>
+        <div class="form-group"><label>Question (English)</label><textarea id="q-text-en" class="modal-input" rows="2"></textarea></div>
+        <div class="form-row">
+          <div class="form-group"><label>A (English)</label><input id="q-opt-en-A" class="modal-input"></div>
+          <div class="form-group"><label>B (English)</label><input id="q-opt-en-B" class="modal-input"></div>
+          <div class="form-group"><label>C (English)</label><input id="q-opt-en-C" class="modal-input"></div>
+          <div class="form-group"><label>D (English)</label><input id="q-opt-en-D" class="modal-input"></div>
+        </div>
+        <div class="form-group"><label>Explanation (English)</label><input id="q-explanation-en" class="modal-input"></div>
+      </details>
       <div class="form-row">
         <div class="form-group"><label>Explanation (shown after answering)</label><input id="q-explanation" class="modal-input"></div>
         <div class="form-group"><label>Marks</label><input id="q-marks" type="number" min="0.5" step="0.5" value="1" class="modal-input"></div>
@@ -427,6 +441,40 @@ Ans: B
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-file-import" data-sticky="1">
+  <div class="modal modal-xl">
+    <div class="modal-header"><h3>Import quiz file</h3><button onclick="closeModal('modal-file-import')"><i data-icon="x"></i></button></div>
+    <div class="modal-body">
+      <label class="file-drop" id="fi-drop">
+        <input type="file" id="fi-file" accept=".html,.htm,.json,.txt" onchange="onQuizFileChosen(this.files[0])">
+        <i data-icon="upload"></i>
+        <b>Choose the quiz HTML file</b>
+        <span class="t-muted small">Same format as all-chapters-quiz.html · subject, unit and chapter names are read automatically</span>
+      </label>
+      <div id="fi-summary"></div>
+      <div id="fi-list" class="fi-list"></div>
+      <div id="fi-settings" class="settings-box" style="display:none">
+        <div class="settings-box-title"><i data-icon="zap"></i> Settings for the imported quizzes</div>
+        <div class="form-row three-eq">
+          <div class="form-group"><label>Language</label><select id="fi-lang" class="modal-input" onchange="renderFileImportList()">
+            <option value="both">Both – students choose മലയാളം / English</option><option value="ml">Malayalam only</option><option value="en">English only</option></select></div>
+          <div class="form-group"><label>Mode</label><select id="fi-mode" class="modal-input">
+            <option value="practice">Practice – instant right/wrong</option><option value="exam">Exam – result at the end</option></select></div>
+          <div class="form-group"><label>Duration (min)</label><input id="fi-duration" type="number" min="1" max="600" value="20" class="modal-input"></div>
+        </div>
+        <div class="form-row three-eq">
+          <div class="form-group"><label>Only for class</label><select id="fi-class" class="modal-input"></select></div>
+          <div class="form-group"><label>Only for batch</label><select id="fi-batch" class="modal-input"></select></div>
+          <div class="form-group"><label>Only for centre</label><select id="fi-centre" class="modal-input"></select></div>
+        </div>
+        <label class="toggle-label"><input type="checkbox" id="fi-active" checked> Switch ON now (students can see them immediately)</label>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="btn-secondary" onclick="closeModal('modal-file-import')">Cancel</button>
+      <button class="btn-primary" id="btn-file-import" onclick="executeFileImport()" disabled><i data-icon="upload"></i> Import</button></div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-create-quiz" data-sticky="1">
   <div class="modal modal-lg">
     <div class="modal-header"><h3 id="modal-quiz-title">Create Quiz</h3><button onclick="closeModal('modal-create-quiz')"><i data-icon="x"></i></button></div>
@@ -470,7 +518,7 @@ Ans: B
 
 <div class="modal-overlay" id="modal-review">
   <div class="modal modal-lg">
-    <div class="modal-header"><h3 id="review-title">Answers</h3><button onclick="closeModal('modal-review')"><i data-icon="x"></i></button></div>
+    <div class="modal-header"><h3 id="review-title">Answers</h3><div class="lang-toggle" title="Medium"><button data-lang="ml" onclick="setLang('ml')">മലയാളം</button><button data-lang="en" onclick="setLang('en')">English</button></div><button onclick="closeModal('modal-review')"><i data-icon="x"></i></button></div>
     <div class="modal-body answer-review" id="review-body"></div>
   </div>
 </div>

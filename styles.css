@@ -1658,3 +1658,28 @@ input.filter-select { cursor: text; }
 .form-row.three-eq { grid-template-columns: 1fr 1fr 1fr; }
 @media (max-width: 640px) { .form-row.three-eq { grid-template-columns: 1fr; } }
 .fb-exp, .review-explanation, .opt-text, .review-option { white-space: pre-wrap; }
+
+/* import quiz file */
+.file-drop { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 26px 16px; border: 2px dashed var(--border); border-radius: var(--radius); cursor: pointer; text-align: center; transition: border-color .15s; }
+.file-drop:hover { border-color: var(--purple); }
+.file-drop input { display: none; }
+.file-drop svg { width: 28px; height: 28px; color: var(--purple); }
+.fi-list { display: flex; flex-direction: column; gap: 6px; max-height: 320px; overflow-y: auto; }
+.fi-list:empty { display: none; }
+.fi-row { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--bg-input); border: 1px solid var(--border); border-radius: var(--radius-sm); cursor: pointer; }
+.fi-row.exists { opacity: .55; cursor: default; }
+.fi-row input { accent-color: var(--purple); width: 16px; height: 16px; flex-shrink: 0; }
+.fi-main { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.fi-main b { font-size: .9rem; }
+
+/* Malayalam / English medium toggle */
+.lang-toggle { display: inline-flex; background: var(--bg-input); border: 1px solid var(--border); border-radius: 20px; padding: 3px; gap: 2px; flex-shrink: 0; }
+.lang-toggle button { background: none; border: none; color: var(--text-muted); font: inherit; font-family: 'Noto Sans Malayalam', 'Inter', sans-serif; font-size: 0.8rem; font-weight: 600; padding: 6px 12px; border-radius: 16px; cursor: pointer; white-space: nowrap; }
+.lang-toggle button.active { background: linear-gradient(135deg, var(--purple), var(--violet)); color: #fff; box-shadow: 0 2px 8px rgba(102,126,234,0.4); }
+.modal-header .lang-toggle { margin-left: auto; margin-right: 8px; }
+@media (max-width: 640px) { .student-info-bar { gap: 8px; } .lang-toggle button { padding: 6px 10px; } }
+.q-text-en { color: var(--text-secondary); font-size: .875rem; margin-top: 4px; font-family: 'Inter', sans-serif; }
+.opt-en { color: var(--text-muted); }
+.en-details { border: 1px dashed var(--border); border-radius: var(--radius-sm); padding: 10px 12px; }
+.en-details summary { cursor: pointer; font-size: .85rem; color: var(--purple-light); font-weight: 600; }
+.en-details[open] { display: flex; flex-direction: column; gap: 12px; }

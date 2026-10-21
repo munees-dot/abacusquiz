@@ -375,7 +375,7 @@ async function onSession(session) {
     $('admin-avatar').textContent = (me.full_name || 'A').trim().charAt(0).toUpperCase();
     showPage('page-admin');
     await loadAdminData();
-    showAdminSection('overview', { skipFetch: true });
+    showAdminSection(currentAdminSection || 'overview', { skipFetch: true });   // stay where the teacher clicked while loading
   } else if (me.status !== 'approved') {
     $('pending-name').textContent = me.full_name;
     $('pending-adm').textContent = me.admission_no || '';
@@ -450,7 +450,14 @@ document.addEventListener('keydown', e => {
 function smartParseQuestionsText(rawText, separateAnswerKey) {
   if (!rawText || !rawText.trim()) return [];
 
-  let text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  let text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    // (added) clean text copied from ChatGPT / Claude / Word: **bold**, # headings, bullets, odd spaces
+    .replace(/\*\*|__/g, '')
+    .replace(/[*_](Explanation|Exp|വിശദീകരണം|Answer|Ans|ഉത്തരം|Correct)\s*(:?)\s*[*_]/gi, '$1$2 ')
+    .replace(/^[ \t]*#{1,6}[ \t]*/gm, '')
+    .replace(/^[ \t]*[-•▪◦][ \t]+/gm, '')
+    .replace(/[\u00A0\u2007\u202F]/g, ' ')
+    .replace(/[\u200B\uFEFF]/g, '');
   const answerKeyMap = {}; // qNum -> { answer, explanation }
 
   // 1. Separate answer key text if provided
@@ -508,7 +515,8 @@ function smartParseQuestionsText(rawText, separateAnswerKey) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    const isQStart = /^\s*(?:(?:ചോദ്യം|Q|Question)\s*)?(\d+)[\.\)\:\-]\s+/.test(line);
+    // (fixed) also accepts "1.Question" (no space), "Q.1", "(1)", "1 )" – but not "2.5"
+    const isQStart = /^\s*(?:(?:ചോദ്യം|Question|Qn|Q)\s*[\.\:\-]?\s*(\d{1,3})(?!\d)\s*[\.\)\:\-]?|\(?(\d{1,3})\s*[\.\)\:\-](?!\d))\s*(?=\S)/i.test(line);
 
     if (isQStart) {
       seenFirstQ = true;
@@ -535,8 +543,8 @@ function smartParseQuestionsText(rawText, separateAnswerKey) {
   const parsedQuestions = [];
 
   blocks.forEach((block, idx) => {
-    const numMatch = block.match(/^\s*(?:(?:ചോദ്യം|Q|Question)\s*)?(\d+)[\.\)\:\-]\s+/i);
-    const qNumber = numMatch ? parseInt(numMatch[1]) : (idx + 1);
+    const numMatch = block.match(/^\s*(?:(?:ചോദ്യം|Question|Qn|Q)\s*[\.\:\-]?\s*(\d{1,3})(?!\d)\s*[\.\)\:\-]?|\(?(\d{1,3})\s*[\.\)\:\-](?!\d))\s*(?=\S)/i);
+    const qNumber = numMatch ? parseInt(numMatch[1] || numMatch[2]) : (idx + 1);
 
     let inlineAnswer = null;
     let inlineExplanation = '';
@@ -559,7 +567,8 @@ function smartParseQuestionsText(rawText, separateAnswerKey) {
 
     // Remove leading number or prefix like "1. ", "ചോദ്യം 1: ", "1. ചോദ്യം 1: "
     // (fixed: the second "ചോദ്യം/Question" is removed only when a number follows it)
-    cleanBlock = cleanBlock.replace(/^\s*(?:(?:ചോദ്യം|Q|Question)\s*)?\d+[\.\)\:\-]\s*(?:(?:ചോദ്യം|Q|Question)\s*\d+[\.\)\:\-]?\s*)?/i, '');
+    cleanBlock = cleanBlock.replace(/^\s*(?:(?:ചോദ്യം|Question|Qn|Q)\s*[\.\:\-]?\s*\d{1,3}(?!\d)\s*[\.\)\:\-]?|\(?\d{1,3}\s*[\.\)\:\-](?!\d))\s*/i, '')
+      .replace(/^(?:ചോദ്യം|Question|Q)\s*\d+[\.\)\:\-]\s*/i, '');
 
     // Identify options A, B, C, D  (also "(a) x (b) y" / "a) x b) y" written on one line)
     const optRegex = /(?:^|\n|\s{2,}|\s(?=\(?[A-Da-d]\)\s))([*]?\s*(?:[A-Da-d][\.\)]|\([A-Da-d]\))\s*[*]?)\s*/g;
@@ -687,11 +696,28 @@ function showAdminSection(name, { skipFetch = false } = {}) {
   }, 30000);
 }
 
+// Live refresh downloads only attempts from the last ~36 hours (keeps Supabase data transfer small
+// even after a year of quizzes). Full history is loaded at login and with the ↻ Refresh button.
+async function refreshRecentAttempts() {
+  const since = new Date(serverNow() - 36 * 3600 * 1000).toISOString();
+  const { data, error } = await sb.from('qm_attempts').select('*').gte('started_at', since)
+    .order('started_at', { ascending: false }).limit(5000);
+  if (error) throw error;
+  const map = new Map(cache.attempts.map(a => [a.id, a]));
+  data.forEach(a => map.set(a.id, a));
+  cache.attempts = [...map.values()].sort((a, b) => b.started_at.localeCompare(a.started_at));
+}
+
 async function liveRefresh(name) {
   const tables = SECTION_LIVE[name];
   if (!tables || !me) return;
-  if (tables.includes('attempts')) await rpc('qm_admin_finalize_expired').catch(() => 0);
-  await reload(...tables);
+  if (tables.includes('attempts')) {
+    await rpc('qm_admin_finalize_expired').catch(() => 0);
+    await refreshRecentAttempts().catch(e => console.warn(e));
+  }
+  const others = tables.filter(t => t !== 'attempts');
+  if (others.length) await reload(...others);
+  else updateAdminBadges();
   if (currentAdminSection === name && !document.querySelector('.modal-overlay.open')) SECTION_RENDER()[name]();
 }
 
@@ -939,7 +965,7 @@ function renderQuestions() {
   let list = cache.questions;
   if (fs) list = list.filter(q => q.subject_id === fs);
   if (val('q-filter-chapter')) list = list.filter(q => q.chapter_id === val('q-filter-chapter'));
-  if (search) list = list.filter(q => (q.text + ' ' + Object.values(q.options || {}).join(' ')).toLowerCase().includes(search));
+  if (search) list = list.filter(q => (q.text + ' ' + (q.text_en || '') + ' ' + Object.values(q.options || {}).join(' ')).toLowerCase().includes(search));
   list = [...list].reverse();
 
   $('questions-count').textContent = `${list.length} question${list.length === 1 ? '' : 's'}`;
@@ -956,9 +982,9 @@ function renderQuestions() {
           <button class="icon-btn danger" title="Delete" onclick="deleteQuestion('${q.id}')">${icon('trash')}</button>
         </div>
       </div>
-      <div class="q-text">${escapeHTML(q.text)}</div>
+      <div class="q-text">${escapeHTML(q.text)}${q.text_en ? `<div class="q-text-en">${escapeHTML(q.text_en)}</div>` : ''}</div>
       <div class="options-display">${['A', 'B', 'C', 'D'].filter(k => (q.options || {})[k]).map(k =>
-        `<div class="option-display ${q.correct === k ? 'correct' : ''}"><b>${k})</b> ${escapeHTML(q.options[k])}</div>`).join('')}</div>
+        `<div class="option-display ${q.correct === k ? 'correct' : ''}"><b>${k})</b> ${escapeHTML(q.options[k])}${q.options_en && q.options_en[k] && q.options_en[k] !== q.options[k] ? `<span class="opt-en"> · ${escapeHTML(q.options_en[k])}</span>` : ''}</div>`).join('')}</div>
       ${q.explanation ? `<div class="review-explanation">💡 ${escapeHTML(q.explanation)}</div>` : ''}
     </div>`).join('') +
     (list.length > shown.length ? `<button class="btn-secondary" onclick="questionListLimit+=100;renderQuestions()">Show more (${list.length - shown.length} more)</button>` : '');
@@ -971,7 +997,7 @@ function openAddQuestion() {
   $('modal-question-title').textContent = 'Add Question';
   populateSubjectSelect('q-subject', 'Select subject', val('q-filter-subject'));
   populateChapterSelect('q-chapter', val('q-subject'), 'No chapter', val('q-filter-chapter'));
-  ['q-text', 'q-opt-A', 'q-opt-B', 'q-opt-C', 'q-opt-D', 'q-explanation'].forEach(id => $(id).value = '');
+  ['q-text', 'q-opt-A', 'q-opt-B', 'q-opt-C', 'q-opt-D', 'q-explanation', 'q-text-en', 'q-opt-en-A', 'q-opt-en-B', 'q-opt-en-C', 'q-opt-en-D', 'q-explanation-en'].forEach(id => $(id).value = '');
   $('q-marks').value = 1;
   document.querySelectorAll('input[name="q-correct"]').forEach(r => r.checked = r.value === 'A');
   openModal('modal-add-question');
@@ -987,6 +1013,9 @@ function openEditQuestion(id) {
   $('q-text').value = q.text;
   ['A', 'B', 'C', 'D'].forEach(k => $('q-opt-' + k).value = (q.options || {})[k] || '');
   $('q-explanation').value = q.explanation || '';
+  $('q-text-en').value = q.text_en || '';
+  ['A', 'B', 'C', 'D'].forEach(k => $('q-opt-en-' + k).value = (q.options_en || {})[k] || '');
+  $('q-explanation-en').value = q.explanation_en || '';
   $('q-marks').value = q.marks;
   document.querySelectorAll('input[name="q-correct"]').forEach(r => r.checked = r.value === q.correct);
   openModal('modal-add-question');
@@ -997,8 +1026,11 @@ async function saveQuestion() {
     subject_id: val('q-subject'), chapter_id: val('q-chapter') || null, text: val('q-text'),
     options: { A: val('q-opt-A'), B: val('q-opt-B'), C: val('q-opt-C'), D: val('q-opt-D') },
     correct: (document.querySelector('input[name="q-correct"]:checked') || {}).value,
-    explanation: val('q-explanation'), marks: parseFloat($('q-marks').value) || 1
+    explanation: val('q-explanation'), marks: parseFloat($('q-marks').value) || 1,
+    text_en: val('q-text-en'), explanation_en: val('q-explanation-en')
   };
+  const optEn = { A: val('q-opt-en-A'), B: val('q-opt-en-B'), C: val('q-opt-en-C'), D: val('q-opt-en-D') };
+  row.options_en = Object.values(optEn).some(Boolean) ? optEn : null;
   if (!row.subject_id) return showToast('Select a subject', 'error');
   if (!row.text) return showToast('Question text is required', 'error');
   if (!row.options.A || !row.options.B) return showToast('At least options A and B are required', 'error');
@@ -1309,9 +1341,14 @@ function renderBulkPreview() {
         <button type="button" onclick="removeBulkQuestion(${i})">✕ Delete</button>
       </div></div>`;
   }).join('');
-  status.innerHTML = bad
+  // numbering check: 1,2,3,5… → question 4 was probably merged into 3 (format problem)
+  const nums = currentBulkParsed.map(q => q.num).filter(n => Number.isFinite(n));
+  const missing = [];
+  if (nums.length) for (let n = Math.min(...nums); n <= Math.max(...nums); n++) if (!nums.includes(n)) missing.push(n);
+  const gapMsg = missing.length ? `<br><span style="color:var(--orange)">⚠️ Question number(s) ${missing.slice(0, 15).join(', ')} not found – they may be joined with the question before. Check that each question starts on a new line with its number (e.g. "4. ...").</span>` : '';
+  status.innerHTML = (bad
     ? `<span style="color:var(--orange)">⚠️ ${bad} question(s) need fixing (red cards). Click the correct option to set the answer.</span>`
-    : `<span style="color:var(--green)">✓ All ${count} questions are ready!</span>`;
+    : `<span style="color:var(--green)">✓ All ${count} questions are ready!</span>`) + gapMsg;
 }
 
 function updateBulkQuestionAnswer(i, k) { if (currentBulkParsed[i]) { currentBulkParsed[i].correct = k; renderBulkPreview(); } }
@@ -1356,6 +1393,187 @@ async function executeBulkImport() {
   await reload('questions', 'quizzes');
   showToast(`🎉 Imported ${ids.length} questions${quizMsg}!`, 'success');
   showAdminSection(makeQuiz ? 'quizzes' : 'questions');
+}
+
+// ════════════════════════════════════════════════════════
+// IMPORT QUIZ FILE (all-chapters-quiz.html format)
+// ════════════════════════════════════════════════════════
+// Format: [{ s, sml, sen, u, t:{ml,en}, Q:[{ q:{ml,en}, o:[{ml,en}×4], a:0-3, e:{ml,en} }] }]
+// The file may be the HTML page (with  const ALL=[...]) or plain JSON.
+
+let fileImportData = [];
+
+function openFileImport() {
+  fileImportData = [];
+  $('fi-file').value = '';
+  $('fi-summary').innerHTML = '';
+  $('fi-list').innerHTML = '';
+  $('fi-settings').style.display = 'none';
+  $('btn-file-import').disabled = true;
+  fillSelect('fi-class', CONFIG.CLASSES.map(c => ({ id: c, name: 'Class ' + c })), { placeholder: 'All classes', selected: '10' });
+  const batches = [...new Set(students().map(s => (s.batch || '').trim()).filter(Boolean))].sort();
+  fillSelect('fi-batch', batches, { placeholder: 'All batches' });
+  fillSelect('fi-centre', CONFIG.CENTRES, { placeholder: 'All centres' });
+  openModal('modal-file-import');
+}
+
+// find the JSON array that follows "const ALL=" (or the first "[{" ) using bracket matching
+function extractQuizArray(text) {
+  const t = String(text || '').trim();
+  if (t.startsWith('[') || t.startsWith('{')) {
+    const j = JSON.parse(t);
+    return Array.isArray(j) ? j : (j.ALL || j.quizzes || [j]);
+  }
+  let start = -1;
+  const m = t.match(/(?:const|let|var)\s+ALL\s*=\s*\[/);
+  if (m) start = m.index + m[0].length - 1;
+  else { const k = t.search(/\[\s*\{\s*"s"\s*:/); if (k !== -1) start = k; }
+  if (start === -1) throw new Error('Quiz data (const ALL=[...]) not found in this file.');
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < t.length; i++) {
+    const c = t[i];
+    if (inStr) { if (esc) esc = false; else if (c === '\\') esc = true; else if (c === '"') inStr = false; continue; }
+    if (c === '"') inStr = true;
+    else if (c === '[' || c === '{') depth++;
+    else if (c === ']' || c === '}') { depth--; if (depth === 0) return JSON.parse(t.slice(start, i + 1)); }
+  }
+  throw new Error('Quiz data is incomplete (file cut off?).');
+}
+
+const biText = (x) => (x && typeof x === 'object') ? { ml: String(x.ml || x.en || '').trim(), en: String(x.en || x.ml || '').trim() } : { ml: String(x || '').trim(), en: String(x || '').trim() };
+
+function normaliseQuizFile(arr) {
+  return arr.map((x, i) => {
+    const subjEn = String(x.sen || x.subject || x.s || 'General').trim();
+    const subjEnNice = subjEn.charAt(0).toUpperCase() + subjEn.slice(1);
+    const title = biText(x.t || x.title || ('Quiz ' + (i + 1)));
+    const unit = x.u ?? x.unit ?? '';
+    const qs = (x.Q || x.questions || []).map(q => ({
+      q: biText(q.q || q.question), o: (q.o || q.options || []).map(biText),
+      a: typeof q.a === 'number' ? q.a : ['A', 'B', 'C', 'D'].indexOf(String(q.a || q.answer || '').toUpperCase()),
+      e: biText(q.e || q.explanation || '')
+    }));
+    const problems = qs.filter(q => !q.q.ml || q.o.length < 2 || q.a < 0 || q.a >= q.o.length).length;
+    const label = String(x.lab || (unit !== '' ? 'Unit ' + unit : '')).trim();   // "Unit 5" / "Ch 1"
+    return {
+      subject: subjEnNice, subjectMl: String(x.sml || '').trim(), unit, title,
+      chapter: (label ? `${label} – ` : '') + title.en + (title.ml && title.ml !== title.en ? ` (${title.ml})` : ''),
+      quizTitleBase: `${subjEnNice}${label ? ' ' + label : ''} – ${title.en}`,
+      questions: qs, problems, selected: problems === 0 && qs.length > 0
+    };
+  });
+}
+
+async function onQuizFileChosen(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    fileImportData = normaliseQuizFile(extractQuizArray(text));
+    if (!fileImportData.length) throw new Error('No quizzes found in the file.');
+  } catch (e) {
+    fileImportData = [];
+    $('fi-summary').innerHTML = `<div class="adm-check taken"><b>ഈ ഫയൽ വായിക്കാൻ കഴിഞ്ഞില്ല</b><span>${escapeHTML(e.message)}</span></div>`;
+    $('fi-list').innerHTML = ''; $('fi-settings').style.display = 'none'; $('btn-file-import').disabled = true;
+    return;
+  }
+  $('fi-settings').style.display = '';
+  renderFileImportList();
+}
+
+function fileQuizTitle(item) {
+  const lang = val('fi-lang');
+  return item.quizTitleBase + (lang === 'ml' ? ' (MM)' : lang === 'en' ? ' (EM)' : '');
+}
+
+function renderFileImportList() {
+  if (!fileImportData.length) return;
+  const existing = new Set(cache.quizzes.map(q => q.title));
+  const subjects = [...new Set(fileImportData.map(x => x.subject))];
+  const totalQ = fileImportData.reduce((n, x) => n + x.questions.length, 0);
+  $('fi-summary').innerHTML = `<div class="adm-check found"><b>✓ ${fileImportData.length} quizzes · ${totalQ} questions</b><span>${subjects.map(escapeHTML).join(', ')}</span></div>`;
+  $('fi-list').innerHTML = fileImportData.map((x, i) => {
+    const exists = existing.has(fileQuizTitle(x));
+    if (exists) { x.selected = false; x.wasExists = true; }
+    else if (x.wasExists) { x.selected = !x.problems && x.questions.length > 0; x.wasExists = false; }
+    const subjExists = cache.subjects.some(s => s.name.toLowerCase() === x.subject.toLowerCase());
+    return `<label class="fi-row ${exists ? 'exists' : ''}">
+      <input type="checkbox" ${x.selected ? 'checked' : ''} ${exists || x.problems ? 'disabled' : ''} onchange="fileImportData[${i}].selected=this.checked;updateFileImportBtn()">
+      <div class="fi-main"><b>${escapeHTML(fileQuizTitle(x))}</b>
+        <span class="t-muted small">${escapeHTML(x.subject)}${x.subjectMl ? ' / ' + escapeHTML(x.subjectMl) : ''} ${subjExists ? '' : '<span class="t-green">(new subject)</span>'} · ${escapeHTML(x.chapter)}</span></div>
+      <span class="badge muted">${x.questions.length} Q</span>
+      ${exists ? '<span class="badge muted">Already imported</span>' : x.problems ? `<span class="err-chip">${x.problems} bad question(s)</span>` : ''}
+    </label>`;
+  }).join('');
+  updateFileImportBtn();
+}
+
+function updateFileImportBtn() {
+  const n = fileImportData.filter(x => x.selected).length;
+  $('btn-file-import').disabled = !n;
+  $('btn-file-import').innerHTML = `${icon('upload')} Import ${n} quiz${n === 1 ? '' : 'zes'}`;
+}
+
+async function executeFileImport() {
+  const chosen = fileImportData.filter(x => x.selected);
+  if (!chosen.length) return;
+  const lang = val('fi-lang');
+  // both → Malayalam in text/options/explanation and English in *_en (students switch with the toggle)
+  const main = x => lang === 'en' ? x.en : x.ml;
+  const eng = x => lang === 'both' && x.en !== x.ml ? x.en : '';
+  const L = ['A', 'B', 'C', 'D'];
+  const settings = {
+    duration_min: Math.min(600, Math.max(1, parseInt($('fi-duration').value) || 20)), pass_pct: 40,
+    mode: val('fi-mode'), review_policy: val('fi-mode') === 'practice' ? 'immediate' : 'after_end',
+    shuffle_questions: false, shuffle_options: false,
+    target_class: val('fi-class'), target_batch: val('fi-batch'), target_centre: val('fi-centre'), active: $('fi-active').checked
+  };
+  const btn = $('btn-file-import');
+  setBusy(btn, true, 'Importing…');
+  let done = 0;
+  try {
+    for (const x of chosen) {
+      btn.innerHTML = `Importing ${done + 1} / ${chosen.length}…`;
+      // subject: find by name (English or Malayalam), else create
+      let sub = cache.subjects.find(s => s.name.toLowerCase() === x.subject.toLowerCase() || (x.subjectMl && s.name === x.subjectMl));
+      if (!sub) {
+        const colors = { physics: '#4facfe', chemistry: '#43e97b', biology: '#f093fb', mathematics: '#fa8231', maths: '#fa8231' };
+        const { data, error } = await sb.from('qm_subjects').insert({ name: x.subject, code: x.subject.slice(0, 4).toUpperCase(), color: colors[x.subject.toLowerCase()] || '#667eea' }).select().single();
+        if (error) throw error;
+        cache.subjects.push(data); sub = data;
+      }
+      // chapter: find by name inside the subject, else create
+      let ch = cache.chapters.find(c => c.subject_id === sub.id && c.name === x.chapter);
+      if (!ch) {
+        const { data, error } = await sb.from('qm_chapters').insert({ subject_id: sub.id, name: x.chapter, sort_order: Number(x.unit) || chaptersOf(sub.id).length + 1 }).select().single();
+        if (error) throw error;
+        cache.chapters.push(data); ch = data;
+      }
+      const rows = x.questions.map(q => {
+        const hasEn = lang === 'both' && (q.q.en !== q.q.ml || q.o.some(o => o.en !== o.ml) || q.e.en !== q.e.ml);
+        return {
+          subject_id: sub.id, chapter_id: ch.id, text: main(q.q),
+          options: Object.fromEntries(q.o.slice(0, 4).map((o, j) => [L[j], main(o)])),
+          text_en: hasEn ? q.q.en : '', explanation_en: hasEn ? q.e.en : '',
+          options_en: hasEn ? Object.fromEntries(q.o.slice(0, 4).map((o, j) => [L[j], o.en])) : null,
+          correct: L[q.a], explanation: main(q.e), marks: 1
+        };
+      });
+      const { data: ins, error: e1 } = await sb.from('qm_questions').insert(rows).select('id');
+      if (e1) throw e1;
+      const { error: e2 } = await sb.from('qm_quizzes').insert({ ...settings, title: fileQuizTitle(x), subject_id: sub.id, chapter_id: ch.id, question_ids: ins.map(r => r.id) });
+      if (e2) throw e2;
+      done++;
+    }
+    setBusy(btn, false);
+    closeModal('modal-file-import');
+    showToast(`🎉 ${done} quizzes imported!`, 'success');
+  } catch (e) {
+    setBusy(btn, false);
+    dbError(e);
+    if (done) showToast(`${done} quizzes were imported before the error. Choose the file again to import the rest.`, 'warning');
+  }
+  await reload('subjects', 'chapters', 'questions', 'quizzes');
+  showAdminSection('quizzes', { skipFetch: true });
 }
 
 // ════════════════════════════════════════════════════════
@@ -1820,28 +2038,36 @@ function lineChartSVG(points) {
 // ANSWER REVIEW (student + admin)
 // ════════════════════════════════════════════════════════
 
+let lastReview = null;
 async function openReview(attemptId) {
   $('review-body').innerHTML = '<div class="empty-state">Loading…</div>';
   openModal('modal-review');
   try {
     const r = await rpc('qm_get_review', { p_attempt: attemptId });
-    if (r.error) { $('review-body').innerHTML = `<div class="empty-state">🔒 ${escapeHTML(ERR[r.error] || r.error)}${r.quiz_end ? `<br><span class="t-muted small">Opens after ${fmtDateTime(r.quiz_end)}</span>` : ''}</div>`; return; }
-    $('review-title').textContent = r.title;
-    const right = r.items.filter(it => it.chosen === it.correct).length;
-    $('review-body').innerHTML = `<p class="t-muted">${right} of ${r.items.length} correct</p>` + r.items.map((it, i) => {
-      const order = optionOrder(it.id, it.options, r.shuffle_options, attemptId);
-      const L = ['A', 'B', 'C', 'D'];
-      return `<div class="review-item ${it.chosen === it.correct ? 'ok' : it.chosen ? 'bad' : 'skip'}">
-        <div class="review-q"><span class="review-status">${it.chosen === it.correct ? '✓' : it.chosen ? '✗' : '–'}</span> ${i + 1}. <span class="pre">${escapeHTML(it.text)}</span></div>
-        <div class="review-options">${order.map((k, j) => {
-          const cls = k === it.correct ? 'correct-answer' : (k === it.chosen ? 'wrong-answer' : '');
-          return `<div class="review-option ${cls}"><b>${L[j]})</b> ${escapeHTML(it.options[k])}${k === it.chosen ? ' <span class="your-tag">your answer</span>' : ''}</div>`;
-        }).join('')}</div>
-        ${!it.chosen ? '<div class="review-explanation">Not answered</div>' : ''}
-        ${it.explanation ? `<div class="review-explanation">💡 ${escapeHTML(it.explanation)}</div>` : ''}
-      </div>`;
-    }).join('');
+    if (r.error) { lastReview = null; $('review-body').innerHTML = `<div class="empty-state">🔒 ${escapeHTML(ERR[r.error] || r.error)}${r.quiz_end ? `<br><span class="t-muted small">Opens after ${fmtDateTime(r.quiz_end)}</span>` : ''}</div>`; return; }
+    lastReview = { r, attemptId };
+    renderReview(r, attemptId);
   } catch (e) { $('review-body').innerHTML = ''; closeModal('modal-review'); dbError(e); }
+}
+
+function renderReview(r, attemptId) {
+  $('review-title').textContent = r.title;
+  updateLangButtons();
+  const right = r.items.filter(it => it.chosen === it.correct).length;
+  $('review-body').innerHTML = `<p class="t-muted">${right} of ${r.items.length} correct</p>` + r.items.map((it, i) => {
+    const order = optionOrder(it.id, it.options, r.shuffle_options, attemptId);
+    const L = ['A', 'B', 'C', 'D'];
+    const exp = tExp(it);
+    return `<div class="review-item ${it.chosen === it.correct ? 'ok' : it.chosen ? 'bad' : 'skip'}">
+      <div class="review-q"><span class="review-status">${it.chosen === it.correct ? '✓' : it.chosen ? '✗' : '–'}</span> ${i + 1}. <span class="pre">${escapeHTML(tText(it))}</span></div>
+      <div class="review-options">${order.map((k, j) => {
+        const cls = k === it.correct ? 'correct-answer' : (k === it.chosen ? 'wrong-answer' : '');
+        return `<div class="review-option ${cls}"><b>${L[j]})</b> ${escapeHTML(tOpt(it, k))}${k === it.chosen ? ' <span class="your-tag">your answer</span>' : ''}</div>`;
+      }).join('')}</div>
+      ${!it.chosen ? '<div class="review-explanation">Not answered</div>' : ''}
+      ${exp ? `<div class="review-explanation">💡 ${escapeHTML(exp)}</div>` : ''}
+    </div>`;
+  }).join('');
 }
 
 // ════════════════════════════════════════════════════════
@@ -1852,6 +2078,7 @@ async function openStudentDashboard() {
   $('student-greeting-text').textContent = `Welcome, ${me.full_name.split(' ')[0]}! 👋`;
   $('student-class-badge').textContent = `Class ${me.class_name} · ${shortCentre(me.centre)}`;
   showPage('page-student');
+  updateLangButtons();
   switchStudentTab('quizzes');
   await loadStudentData();
   clearInterval(dashboardTimer); clearInterval(dashboardRefresh);
@@ -2048,12 +2275,33 @@ function updateTimerDisplay() {
 
 const DISPLAY_LETTERS = ['A', 'B', 'C', 'D'];
 
+// ── Malayalam / English medium ──
+// Malayalam is stored in text/options/explanation, English in *_en. A missing English version falls back to Malayalam.
+function getLang() {
+  try { const v = localStorage.getItem('qm_lang'); if (v === 'ml' || v === 'en') return v; } catch (e) { }
+  return me && /\bEM\b|ENGLISH/i.test(me.batch || '') ? 'en' : 'ml';
+}
+function setLang(l) {
+  try { localStorage.setItem('qm_lang', l); } catch (e) { }
+  updateLangButtons();
+  if (quizState && $('page-quiz').classList.contains('active')) renderQuizQuestion();
+  if ($('modal-review').classList.contains('open') && lastReview) renderReview(lastReview.r, lastReview.attemptId);
+}
+function updateLangButtons() {
+  const l = getLang();
+  document.querySelectorAll('.lang-toggle button').forEach(b => b.classList.toggle('active', b.dataset.lang === l));
+}
+const tText = q => (getLang() === 'en' && q.text_en) ? q.text_en : q.text;
+const tOpt = (q, k) => (getLang() === 'en' && q.options_en && q.options_en[k]) ? q.options_en[k] : (q.options || {})[k];
+const tExp = q => (getLang() === 'en' && q.explanation_en) ? q.explanation_en : (q.explanation || '');
+
 function renderQuizQuestion() {
   const st = quizState, q = st.questions[st.currentIdx], total = st.questions.length;
   $('q-current').textContent = st.currentIdx + 1;
   $('q-total').textContent = total;
   $('question-number-badge').textContent = `Question ${st.currentIdx + 1} of ${total}${+q.marks !== 1 ? ` · ${+q.marks} marks` : ''}`;
-  $('question-text').textContent = q.text;
+  $('question-text').textContent = tText(q);
+  updateLangButtons();
   $('quiz-progress-bar').style.width = (Object.keys(st.answers).length / total * 100) + '%';
 
   const order = optionOrder(q.id, q.options, st.shuffleOptions, st.attemptId);
@@ -2067,16 +2315,17 @@ function renderQuizQuestion() {
       else cls += ' is-dim';
     } else if (chosen === k) cls += ' selected';
     const mark = fb ? (k === fb.correct ? '<span class="opt-mark">✓</span>' : (k === fb.chosen ? '<span class="opt-mark">✗</span>' : '')) : '';
-    return `<button class="${cls}" ${fb || st.busy ? 'disabled' : ''} onclick="selectOption('${k}')"><span class="option-label">${DISPLAY_LETTERS[i]}</span><span class="opt-text">${escapeHTML(q.options[k])}</span>${mark}</button>`;
+    return `<button class="${cls}" ${fb || st.busy ? 'disabled' : ''} onclick="selectOption('${k}')"><span class="option-label">${DISPLAY_LETTERS[i]}</span><span class="opt-text">${escapeHTML(tOpt(q, k))}</span>${mark}</button>`;
   }).join('');
 
   const fbBox = $('answer-feedback');
   if (fb) {
     const correctLetter = DISPLAY_LETTERS[order.indexOf(fb.correct)];
     fbBox.className = 'answer-feedback ' + (fb.is_correct ? 'good' : 'bad');
+    const en = getLang() === 'en', exp = tExp(fb);
     fbBox.innerHTML = fb.is_correct
-      ? `<div class="fb-title">✓ ശരിയുത്തരം! Correct</div>${fb.explanation ? `<div class="fb-exp">💡 ${escapeHTML(fb.explanation)}</div>` : ''}`
-      : `<div class="fb-title">✗ തെറ്റ്. ശരിയുത്തരം: ${correctLetter}) ${escapeHTML(q.options[fb.correct])}</div>${fb.explanation ? `<div class="fb-exp">💡 ${escapeHTML(fb.explanation)}</div>` : ''}`;
+      ? `<div class="fb-title">✓ ${en ? 'Correct!' : 'ശരിയുത്തരം!'}</div>${exp ? `<div class="fb-exp">💡 ${escapeHTML(exp)}</div>` : ''}`
+      : `<div class="fb-title">✗ ${en ? 'Wrong. Correct answer' : 'തെറ്റ്. ശരിയുത്തരം'}: ${correctLetter}) ${escapeHTML(tOpt(q, fb.correct))}</div>${exp ? `<div class="fb-exp">💡 ${escapeHTML(exp)}</div>` : ''}`;
   } else if (st.busy) {
     fbBox.className = 'answer-feedback checking'; fbBox.innerHTML = '<div class="fb-title">Checking…</div>';
   } else { fbBox.className = 'answer-feedback'; fbBox.innerHTML = ''; }
@@ -2109,7 +2358,7 @@ async function selectOption(key) {
     try {
       const r = await rpc('qm_answer', { p_attempt: st.attemptId, p_question: q.id, p_choice: key });
       if (r.error) return handleAnswerError(r.error);
-      st.feedback[q.id] = { chosen: r.chosen, correct: r.correct, is_correct: r.is_correct, explanation: r.explanation };
+      st.feedback[q.id] = { chosen: r.chosen, correct: r.correct, is_correct: r.is_correct, explanation: r.explanation, explanation_en: r.explanation_en };
       st.answers[q.id] = r.chosen;
     } catch (e) {
       delete st.answers[q.id];
@@ -2311,5 +2560,5 @@ function hydrateIcons(root = document) {
 document.addEventListener('DOMContentLoaded', () => { hydrateIcons(); init(); });
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { smartParseQuestionsText, parseTabularQuestions, seededShuffle, optionOrder, rankAttempts, fmtCountdown };
+  module.exports = { extractQuizArray, normaliseQuizFile, smartParseQuestionsText, parseTabularQuestions, seededShuffle, optionOrder, rankAttempts, fmtCountdown };
 }
