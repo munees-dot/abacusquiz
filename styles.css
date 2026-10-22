@@ -1815,3 +1815,30 @@ input.filter-select { cursor: text; }
 .filter-chip svg { width: 14px; height: 14px; }
 .filter-chip button { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-secondary); border-radius: 14px; padding: 3px 10px; font: inherit; font-size: .75rem; cursor: pointer; }
 #quiz-filter-chip:empty { display: none; }
+
+/* ═════ Abacus Academy branding ═════ */
+.logo-card { background: #fff; border-radius: 16px; padding: 12px 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.35); display: flex; justify-content: center; margin: 0 auto 14px; max-width: 360px; }
+.logo-card img { width: 100%; height: auto; display: block; }
+.splash-card { width: min(78vw, 420px); max-width: none; animation: float 3s ease-in-out infinite; margin-bottom: 18px; }
+.logo-badge { background: #fff; border-radius: 10px; width: 40px; height: 40px; padding: 3px; display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.3); overflow: hidden; }
+.logo-badge img { width: 100%; height: 100%; object-fit: contain; }
+.logo-badge.big { width: 84px; height: 84px; border-radius: 18px; padding: 6px; margin: 0 auto 12px; display: flex; }
+.result-logo { width: 64px; height: 64px; border-radius: 16px; padding: 5px; margin: 0 auto 18px; display: flex; }
+.brand-text { display: flex; flex-direction: column; line-height: 1.05; font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.05rem; letter-spacing: 1px; color: var(--text-primary); }
+.brand-text small { font-size: .62rem; font-weight: 600; letter-spacing: 2.5px; color: var(--purple-light); margin-top: 2px; }
+.sidebar-logo .brand-text small { letter-spacing: 1px; }
+.student-brand { gap: 10px; }
+
+/* footer */
+.site-footer { text-align: center; padding: 18px 16px 22px; color: var(--text-muted); font-size: .78rem; display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.site-footer b { color: var(--text-secondary); letter-spacing: 3px; font-family: 'Outfit', sans-serif; font-size: .9rem; }
+#page-login.active, #page-pending.active, #page-setup.active, #page-result.active { flex-direction: column; }
+#page-login .site-footer, #page-pending .site-footer, #page-setup .site-footer { position: relative; z-index: 1; margin-top: 18px; padding-bottom: 6px; }
+#page-result .site-footer { margin-top: 10px; }
+#page-student .site-footer { margin-top: auto; }
+.admin-main .site-footer { border-top: 1px solid var(--border); margin-top: 24px; }
+@media print { .site-footer { display: flex !important; color: #333 !important; } .site-footer b { color: #111 !important; } }
+@media (max-width: 640px) {
+  .logo-card { padding: 10px 12px; border-radius: 14px; margin-bottom: 10px; }
+  .student-header .logo-badge { width: 36px; height: 36px; }
+}

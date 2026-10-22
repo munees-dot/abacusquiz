@@ -4,7 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="theme-color" content="#0d0d1a">
-<title>QuizMaster Pro – Abacus Academy</title>
+<title>Abacus Academy – Online Quiz</title>
+<link rel="icon" type="image/png" href="assets/favicon.png">
+<link rel="apple-touch-icon" href="assets/abacus-icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@600;700;800&family=Noto+Sans+Malayalam:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -17,11 +19,8 @@
 <!-- ═════════ SPLASH ═════════ -->
 <div class="splash-screen" id="splash">
   <div class="splash-content">
-    <div class="splash-logo">
-      <div class="logo-icon"><svg viewBox="0 0 72 72" fill="none"><rect width="72" height="72" rx="18" fill="url(#lg1)"/><path d="M22 37l9 9 19-20" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="lg1" x1="0" y1="0" x2="72" y2="72"><stop stop-color="#667eea"/><stop offset="1" stop-color="#764ba2"/></linearGradient></defs></svg></div>
-      <div class="splash-title">QuizMaster <span>Pro</span></div>
-    </div>
-    <p class="splash-subtitle">Abacus Academy</p>
+    <div class="logo-card splash-card"><img src="assets/abacus-logo-full.jpg" alt="Abacus Academy – Parambil Peedika | Puthur Pallikkal"></div>
+    <p class="splash-subtitle">Online Quiz</p>
     <div class="splash-loader"><div class="loader-bar"></div></div>
   </div>
 </div>
@@ -42,6 +41,7 @@
     </ol>
     <p class="login-hint" id="setup-extra"></p>
   </div>
+  <footer class="site-footer"><b>ABACUS ACADEMY</b><span>Parambil Peedika · Puthur Pallikkal</span></footer>
 </div>
 
 <!-- ═════════ LOGIN / SIGN UP ═════════ -->
@@ -49,9 +49,8 @@
   <div class="login-bg"><div class="bg-orb orb1"></div><div class="bg-orb orb2"></div><div class="bg-orb orb3"></div></div>
   <div class="login-container">
     <div class="login-header">
-      <div class="brand-logo"><svg width="56" height="56" viewBox="0 0 72 72" fill="none"><rect width="72" height="72" rx="18" fill="url(#lg2)"/><path d="M22 37l9 9 19-20" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><defs><linearGradient id="lg2" x1="0" y1="0" x2="72" y2="72"><stop stop-color="#667eea"/><stop offset="1" stop-color="#764ba2"/></linearGradient></defs></svg></div>
-      <div class="brand-name">QuizMaster <span>Pro</span></div>
-      <p class="brand-tagline">Abacus Academy · Online Quiz</p>
+      <div class="logo-card"><img src="assets/abacus-logo-full.jpg" alt="Abacus Academy"></div>
+      <p class="brand-tagline">Online Quiz · Learn from the best teachers</p>
     </div>
 
     <div class="login-tabs">
@@ -91,6 +90,7 @@
       <p class="login-hint">Abacus Academy-യുടെ student list-ൽ ഉള്ള Admission No ആണെങ്കിൽ ഉടനെ quiz എഴുതാം.<br>List-ൽ ഇല്ലെങ്കിൽ ടീച്ചർ approve ചെയ്യണം.</p>
     </div>
   </div>
+  <footer class="site-footer"><b>ABACUS ACADEMY</b><span>Parambil Peedika · Puthur Pallikkal</span></footer>
 </div>
 
 <!-- ═════════ WAITING FOR APPROVAL ═════════ -->
@@ -98,7 +98,7 @@
   <div class="login-bg"><div class="bg-orb orb1"></div><div class="bg-orb orb2"></div></div>
   <div class="login-container">
     <div class="login-header">
-      <div class="pending-icon">⏳</div>
+      <div class="logo-badge big"><img src="assets/abacus-mark.jpg" alt="Abacus Academy"></div>
       <div class="brand-name" id="pending-title">Approval pending</div>
       <p class="brand-tagline"><b id="pending-name"></b> · <span id="pending-adm"></span></p>
     </div>
@@ -108,13 +108,14 @@
       <button class="btn-secondary" onclick="logout()"><i data-icon="logout"></i> Logout</button>
     </div>
   </div>
+  <footer class="site-footer"><b>ABACUS ACADEMY</b><span>Parambil Peedika · Puthur Pallikkal</span></footer>
 </div>
 
 <!-- ═════════ ADMIN ═════════ -->
 <div class="page" id="page-admin">
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <div class="sidebar-logo"><svg width="30" height="30" viewBox="0 0 72 72" fill="none"><rect width="72" height="72" rx="18" fill="#667eea"/><path d="M22 37l9 9 19-20" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg> QuizMaster</div>
+      <div class="sidebar-logo"><span class="logo-badge"><img src="assets/abacus-mark.jpg" alt=""></span><span class="brand-text">ABACUS<small>ACADEMY · Quiz Admin</small></span></div>
       <button class="sidebar-close" onclick="closeSidebar()"><i data-icon="x"></i></button>
     </div>
     <nav class="sidebar-nav">
@@ -238,13 +239,14 @@
         <div id="an-student-body" class="print-area"></div>
       </div>
     </section>
+    <footer class="site-footer"><b>ABACUS ACADEMY</b><span>Parambil Peedika · Puthur Pallikkal</span></footer>
   </main>
 </div>
 
 <!-- ═════════ STUDENT ═════════ -->
 <div class="page" id="page-student">
   <header class="student-header">
-    <div class="student-brand"><svg width="28" height="28" viewBox="0 0 72 72" fill="none"><rect width="72" height="72" rx="18" fill="#667eea"/><path d="M22 37l9 9 19-20" stroke="#fff" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg> <span class="hide-sm">QuizMaster</span></div>
+    <div class="student-brand"><span class="logo-badge"><img src="assets/abacus-mark.jpg" alt="Abacus Academy"></span><span class="brand-text hide-sm">ABACUS<small>ACADEMY</small></span></div>
     <div class="student-info-bar">
       <div class="student-greeting"><span id="student-greeting-text">Welcome!</span><span class="student-badge" id="student-class-badge"></span></div>
       <div class="lang-toggle" title="Medium"><button data-lang="ml" onclick="setLang('ml')">മലയാളം</button><button data-lang="en" onclick="setLang('en')">English</button></div>
@@ -260,6 +262,7 @@
     <section class="student-section active" id="stu-quizzes"><div class="subj-chips" id="student-subject-chips"></div><div class="subj-blocks" id="student-quizzes-grid"></div></section>
     <section class="student-section" id="stu-results"><div id="student-results-summary"></div><div id="student-results-list"></div></section>
   </div>
+  <footer class="site-footer"><b>ABACUS ACADEMY</b><span>Parambil Peedika · Puthur Pallikkal</span></footer>
 </div>
 
 <!-- ═════════ QUIZ TAKING ═════════ -->
@@ -308,6 +311,7 @@
 <!-- ═════════ RESULT ═════════ -->
 <div class="page" id="page-result">
   <div class="result-container">
+    <div class="logo-badge result-logo"><img src="assets/abacus-mark.jpg" alt="Abacus Academy"></div>
     <div class="result-animation">
       <div class="result-circle">
         <svg class="result-svg" viewBox="0 0 120 120"><circle class="result-bg-circle" cx="60" cy="60" r="54" fill="none" stroke-width="10"/>
@@ -329,6 +333,7 @@
     </div>
     <p class="review-later" id="review-later-note"></p>
   </div>
+  <footer class="site-footer"><b>ABACUS ACADEMY</b><span>Parambil Peedika · Puthur Pallikkal</span></footer>
 </div>
 
 <!-- ═════════ MODALS ═════════ -->
