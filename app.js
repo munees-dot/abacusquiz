@@ -2719,6 +2719,11 @@ function hydrateIcons(root = document) {
 
 document.addEventListener('DOMContentLoaded', () => { hydrateIcons(); init(); });
 
+// home-screen app (Android "Install app"); the service worker does not cache anything
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => { }));
+}
+
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { extractQuizArray, normaliseQuizFile, smartParseQuestionsText, parseTabularQuestions, seededShuffle, optionOrder, rankAttempts, fmtCountdown };
 }
